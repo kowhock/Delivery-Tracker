@@ -26,13 +26,16 @@ Roles: **admin** and **dispatcher** see everything. **driver** only sees their o
 3. **Create the database**: Supabase → SQL Editor → paste all of `supabase/schema.sql` → Run.
    Database created with an older version? Run `supabase/upgrade.sql` once instead (safe to run again).
 4. **Connect the app**: copy `.env.example` to `.env.local` and fill in the URL and anon/publishable key from Supabase → Project Settings → API.
-5. **Create users**: Supabase → Authentication → Users → Add user (tick *Auto confirm*). Everyone starts as a `driver`. Make yourself admin in the SQL Editor:
+5. **Create users**: Supabase → Authentication → Users → Add user → Create new user, tick *Auto Confirm User*.
+   For a username login, use the email `<username>@khdelivery.my` (e.g. `ali@khdelivery.my` signs in as `ali`;
+   lowercase, no spaces). It's never emailed, so reset forgotten passwords from that same Users page.
+   Real emails also work — type the full email at sign-in. Everyone starts as a `driver`. Make yourself admin in the SQL Editor:
    ```sql
    update profiles set role = 'admin', full_name = 'Ying' where id = (select id from auth.users where email = 'you@company.com');
    -- office staff:
    update profiles set role = 'dispatcher' where id = (select id from auth.users where email = 'staff@company.com');
    -- drivers: just set their display name
-   update profiles set full_name = 'Ali' where id = (select id from auth.users where email = 'ali@company.com');
+   update profiles set full_name = 'Ali' where id = (select id from auth.users where email = 'ali@khdelivery.my');
    ```
 6. **Run it**:
    ```bash

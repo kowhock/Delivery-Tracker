@@ -14,13 +14,17 @@ import type { DoItem, DoStatus, SalesOrder } from "@/lib/types";
 
 // ---------- Auth ------------------------------------------------------
 
+/** Username accounts are Supabase users with the email "<username>@khdelivery.my" (never emailed). */
+const USERNAME_DOMAIN = "khdelivery.my";
+
 export async function signIn(_prev: { error?: string } | undefined, formData: FormData) {
   const supabase = await createClient();
+  const login = String(formData.get("login")).trim().toLowerCase();
   const { error } = await supabase.auth.signInWithPassword({
-    email: String(formData.get("email")),
+    email: login.includes("@") ? login : `${login}@${USERNAME_DOMAIN}`,
     password: String(formData.get("password")),
   });
-  if (error) return { error: "Wrong email or password." };
+  if (error) return { error: "Wrong username or password." };
   redirect("/");
 }
 
