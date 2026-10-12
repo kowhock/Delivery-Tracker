@@ -21,3 +21,10 @@ export async function requireStaff() {
   if (s.profile.role === "driver") redirect("/driver");
   return s;
 }
+
+/** Admin-only pages (Sales orders, Import). Dispatchers are sent back to Deliveries. */
+export async function requireAdmin() {
+  const s = await requireStaff();
+  if (s.profile.role !== "admin") redirect("/deliveries");
+  return s;
+}

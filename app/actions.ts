@@ -4,13 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { getSession, requireStaff } from "@/lib/auth";
+import { getSession, requireAdmin, requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { importAcDeliveryOrders, importAcSalesOrders } from "@/lib/autocount";
 import { bestRoute, mapsEnabled, updateDistances } from "@/lib/geo";
 import type { AcImport, AcImportResult } from "@/lib/autocount-rows";
-import { branchName, canPlan, lockedBranch, storeAddress } from "@/lib/branches";
-import type { DoStatus } from "@/lib/types";
+import { branchName, canPlan, deliveredOrSoldBy, lockedBranch, storeAddress } from "@/lib/branches";
+import type { DoItem, DoStatus, SalesOrder } from "@/lib/types";
 
 // ---------- Auth ------------------------------------------------------
 
@@ -34,7 +34,7 @@ export async function signOut() {
 
 /** Saves an AutoCount SO or DO listing (parsed in the browser from the Excel export). */
 export async function importAutoCount(data: AcImport): Promise<AcImportResult> {
-  const { supabase } = await requireStaff();
+  const { supabase } = await requireAdmin();
   const result =
     data.kind === "so"
       ? await importAcSalesOrders(supabase, data.rows)
@@ -62,6 +62,32 @@ export async function importAutoCount(data: AcImport): Promise<AcImportResult> {
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
   return result;
+}
+
+// ---------- Sales order preview ---------------------------------------
+
+export type SoPreview = { so: SalesOrder; items: DoItem[] };
+
+/** An SO's header and items for the popup on Deliveries / Driver status (dispatchers can't open the SO page). */
+export async function getSoPreview(soId: string): Promise<SoPreview | null> {
+  const { supabase, profile } = await requireStaff();
+  const [{ data: so }, { data: items }] = await Promise.all([
+    supabase.from("sales_orders").select("*").eq("id", soId).single<SalesOrder>(),
+    supabase.from("so_items").select("id, item_code, description, uom, qty").eq("so_id", soId).order("line_no"),
+  ]);
+  if (!so) return null;
+  // Same rule as the SO page: dispatchers see their branch's SOs, or SOs on a DO their branch delivers or sold.
+  const locked = lockedBranch(profile);
+  if (locked && so.branch !== locked) {
+    const { data: dos } = await supabase
+      .from("delivery_orders")
+      .select("id, do_sales_orders!inner(so_id)")
+      .eq("do_sales_orders.so_id", soId)
+      .or(deliveredOrSoldBy(locked))
+      .limit(1);
+    if (!dos?.length) return null;
+  }
+  return { so, items: (items ?? []) as DoItem[] };
 }
 
 // ---------- Delivery orders (staff) ----------------------------------

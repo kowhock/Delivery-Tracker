@@ -14,7 +14,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
             <img src="/icons/logo.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
             <span className="hidden sm:inline">Delivery Tracker</span>
           </Link>
-          <NavLinks />
+          <NavLinks role={profile.role} />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-slate-500 md:inline">
               {profile.full_name} · <span className="capitalize">{profile.role}</span>

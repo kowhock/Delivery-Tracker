@@ -108,7 +108,7 @@ export default async function DriversPage({
           No drivers {branch ? `in ${branch} branch` : "yet"}. Set a driver&apos;s branch in Supabase (<code>profiles.branch</code>).
         </div>
       ) : (
-        <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} />
+        <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} soPopup={profile.role === "dispatcher"} />
       )}
     </div>
   );

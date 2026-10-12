@@ -256,7 +256,7 @@ export default async function DeliveriesPage({
                           <BranchTags job={j} />
                         </div>
                         <p className="text-xs text-slate-500">
-                          <SoLinks job={j} />
+                          <SoLinks job={j} popup={profile.role === "dispatcher"} />
                           {j.source !== "special" && <span className="text-slate-400"> · {j.do_items?.length ?? 0} items</span>}
                         </p>
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>

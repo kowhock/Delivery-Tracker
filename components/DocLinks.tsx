@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { branchName } from "@/lib/branches";
 import type { DeliveryOrder } from "@/lib/types";
+import { SoPopup } from "./SoPopup";
 
-/** The SO number(s) a DO came from, each linking to its SO page when that SO has been imported. */
-export function SoLinks({ job, className = "" }: { job: Pick<DeliveryOrder, "so_no" | "links">; className?: string }) {
+/**
+ * The SO number(s) a DO came from, each linking to its SO page when that SO has been imported.
+ * `popup`: open the SO in a popup instead (dispatchers can't open the SO page).
+ */
+export function SoLinks({ job, popup = false, className = "" }: { job: Pick<DeliveryOrder, "so_no" | "links">; popup?: boolean; className?: string }) {
   const links = job.links?.length ? job.links : job.so_no ? job.so_no.split(", ").map((so_no) => ({ so_no, so_id: null })) : [];
   if (!links.length) return null;
   return (
@@ -11,7 +15,9 @@ export function SoLinks({ job, className = "" }: { job: Pick<DeliveryOrder, "so_
       {links.map((l, i) => (
         <span key={l.so_no}>
           {i > 0 && ", "}
-          {l.so_id ? (
+          {l.so_id && popup ? (
+            <SoPopup soId={l.so_id} soNo={l.so_no} />
+          ) : l.so_id ? (
             <Link href={`/orders/${l.so_id}`} className="text-brand-700 hover:underline" draggable={false}>{l.so_no}</Link>
           ) : (
             l.so_no
