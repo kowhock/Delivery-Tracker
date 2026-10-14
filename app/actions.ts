@@ -10,7 +10,7 @@ import { importAcDeliveryOrders, importAcSalesOrders } from "@/lib/autocount";
 import { bestRoute, mapsEnabled, updateDistances } from "@/lib/geo";
 import type { AcImport, AcImportResult } from "@/lib/autocount-rows";
 import { branchName, canPlan, deliveredOrSoldBy, lockedBranch, storeAddress } from "@/lib/branches";
-import { TODO_LABEL, type DoItem, type DoStatus, type OutstandingTodo, type SalesOrder } from "@/lib/types";
+import { TIME_SLOTS, TODO_LABEL, type DoItem, type DoStatus, type OutstandingTodo, type SalesOrder } from "@/lib/types";
 
 // ---------- Auth ------------------------------------------------------
 
@@ -272,6 +272,21 @@ export async function moveToDate(doIds: string[], date: string) {
   revalidatePath("/driver");
   revalidatePath("/orders/[id]", "page");
   return { moved: rows.length, skipped: doIds.length - rows.length };
+}
+
+/** Optional estimated delivery window for a DO (e.g. 1–3pm). null = no estimate. */
+export async function setTimeSlot(doId: string, slot: string | null) {
+  const { supabase, profile } = await requireStaff();
+  if (slot != null && !(slot in TIME_SLOTS)) throw new Error("Pick a time slot.");
+  const { data: d } = await supabase.from("delivery_orders").select("branch").eq("id", doId).single();
+  if (!d) throw new Error("DO not found.");
+  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  const { error } = await supabase.from("delivery_orders").update({ time_slot: slot }).eq("id", doId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  revalidatePath("/orders/[id]", "page");
 }
 
 // ---------- Trip planning (Driver status page) -----------------------

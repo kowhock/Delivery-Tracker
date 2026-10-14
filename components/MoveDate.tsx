@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { moveToDate } from "@/app/actions";
+import { moveToDate, setTimeSlot } from "@/app/actions";
+import { TIME_SLOTS, type TimeSlot } from "@/lib/types";
 import { addDays, dayLabel } from "@/lib/format";
 
 const QUICK_DAYS = [0, 1, 2]; // today, tomorrow, the day after
@@ -73,5 +74,27 @@ export function DoDate({ doId, date, today }: { doId: string; date: string; toda
       onPick={(d) => d !== date && start(async () => void (await moveToDate([doId], d)))}
       className="w-full"
     />
+  );
+}
+
+/** One DO's optional estimated delivery window. */
+export function DoTimeSlot({ doId, slot }: { doId: string; slot: TimeSlot | null }) {
+  const [pending, start] = useTransition();
+  return (
+    <select
+      key={slot ?? ""}
+      disabled={pending}
+      defaultValue={slot ?? ""}
+      aria-label="Estimated time"
+      onChange={(e) => start(async () => void (await setTimeSlot(doId, e.target.value || null)))}
+      className="input w-full py-1.5 text-xs"
+    >
+      <option value="">🕒 No time estimate</option>
+      {Object.entries(TIME_SLOTS).map(([v, label]) => (
+        <option key={v} value={v}>
+          🕒 Estimated {label}
+        </option>
+      ))}
+    </select>
   );
 }

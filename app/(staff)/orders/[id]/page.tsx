@@ -5,7 +5,7 @@ import { branchName, lockedBranch } from "@/lib/branches";
 import { splitDocNos } from "@/lib/autocount-rows";
 import { DoBadge, SoBadge } from "@/components/StatusBadge";
 import { driverLabel, fmtDate, fmtDateTime, fmtMoney, fmtQty } from "@/lib/format";
-import { DO_STATUS_LABEL, type DeliveryOrder, type DoStatus, type SalesOrder, type StatusEvent } from "@/lib/types";
+import { DO_STATUS_LABEL, TIME_SLOTS, type DeliveryOrder, type DoStatus, type TimeSlot, type SalesOrder, type StatusEvent } from "@/lib/types";
 
 const EVENT_LABEL: Record<string, string> = { so_created: "Order created", do_created: "DO created", ...DO_STATUS_LABEL };
 
@@ -149,7 +149,7 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
                       )}
                     </div>
                     <span className="text-sm text-slate-500">
-                      {fmtDate(d.delivery_date)} · {d.driver ? driverLabel(d.driver) : "No driver"}
+                      {fmtDate(d.delivery_date)}{d.time_slot && ` · est. ${TIME_SLOTS[d.time_slot as TimeSlot]}`} · {d.driver ? driverLabel(d.driver) : "No driver"}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-slate-600">

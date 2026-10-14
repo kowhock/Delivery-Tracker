@@ -237,5 +237,11 @@ drop policy if exists "staff all" on public.do_outstanding;
 create policy "staff all" on public.do_outstanding for all using ((select public.is_staff())) with check ((select public.is_staff()));
 grant select, insert, update, delete on public.do_outstanding to authenticated;
 
+-- ---------- Delivery orders: estimated time slot ---------------------
+-- Optional window the office tells the customer (e.g. 1300-1500 = 1–3pm). null = no estimate.
+alter table public.delivery_orders
+  add column if not exists time_slot text
+  check (time_slot in ('0845-1100', '1100-1300', '1300-1500', '1500-1700', '1700-1900', '1900-2100'));
+
 -- ---------- After upgrading: set users' branch and lorry number --------
 -- update profiles set branch = 'GP', lorry_no = '93' where full_name = 'Azli';

@@ -19,6 +19,17 @@ export const SO_STATUS_LABEL: Record<SoStatus, string> = {
   cancelled: "Cancelled",
 };
 
+/** Optional estimated delivery windows (value stored on the DO → label). */
+export const TIME_SLOTS = {
+  "0845-1100": "8.45–11am",
+  "1100-1300": "11am–1pm",
+  "1300-1500": "1–3pm",
+  "1500-1700": "3–5pm",
+  "1700-1900": "5–7pm",
+  "1900-2100": "7–9pm",
+} as const;
+export type TimeSlot = keyof typeof TIME_SLOTS;
+
 export type Profile = { id: string; full_name: string; role: Role; phone: string | null; branch: string | null; lorry_no: string | null };
 
 export type SalesOrder = {
@@ -58,6 +69,7 @@ export type DeliveryOrder = {
   address: string | null;
   remarks: string | null;
   delivery_date: string;
+  time_slot: TimeSlot | null; // optional estimated delivery window
   branch: string | null; // delivering branch
   sales_branch: string | null; // agent's branch
   ref: string | null;

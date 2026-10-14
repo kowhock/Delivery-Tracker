@@ -6,7 +6,7 @@ import { markDelivered, markFailed, startDelivery } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
 import { fmtQty, mapsLinks } from "@/lib/format";
 import { MESSAGES, whatsappLink } from "@/lib/whatsapp";
-import type { DeliveryOrder } from "@/lib/types";
+import { TIME_SLOTS, type DeliveryOrder } from "@/lib/types";
 
 const FAIL_REASONS = ["Customer not available", "Shop closed", "Wrong / unclear address", "Customer rejected goods", "Vehicle problem", "Other"];
 
@@ -49,6 +49,7 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
         </div>
 
         {job.address && <p className="text-sm text-slate-600">{job.address}</p>}
+        {job.time_slot && <p className="text-sm font-medium text-sky-700">🕒 Estimated {TIME_SLOTS[job.time_slot]}</p>}
         {job.instructions && <p className="rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-900">📋 {job.instructions}</p>}
         {job.remarks && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">📝 {job.remarks}</p>}
 

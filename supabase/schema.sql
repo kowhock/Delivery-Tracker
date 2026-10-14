@@ -101,6 +101,7 @@ create table public.delivery_orders (
   address        text,                         -- AutoCount Delivery Address 1
   remarks        text,                         -- Remark 1 of the linked SO(s)
   delivery_date  date not null default current_date,
+  time_slot      text check (time_slot in ('0845-1100', '1100-1300', '1300-1500', '1500-1700', '1700-1900', '1900-2100')), -- optional estimated delivery window
   branch         text,                         -- delivering branch, from the DO number prefix (GPD → GP)
   sales_branch   text,                         -- agent's branch, from Sales Location; follows the DO too
   ref            text,                         -- AutoCount Ref. (customer PO etc.)

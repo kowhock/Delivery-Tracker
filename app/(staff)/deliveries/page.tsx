@@ -2,11 +2,11 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
-import { DO_STATUSES, DO_STATUS_LABEL, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
+import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { BranchTags, SoLinks } from "@/components/DocLinks";
-import { DoDate } from "@/components/MoveDate";
+import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -277,11 +277,13 @@ export default async function DeliveriesPage({
                           <div className="space-y-1.5">
                             <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} />
                             <DoDate doId={j.id} date={j.delivery_date} today={today} />
+                            {!j.is_oc && <DoTimeSlot doId={j.id} slot={j.time_slot} />}
                           </div>
                         ) : (
                           <div className="space-y-0.5 text-xs text-slate-500">
                             <p>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? "O/C (customer collects)" : "No driver yet"}</p>
                             <p className={late ? "text-rose-600" : ""}>📅 {fmtDate(j.delivery_date)}{late && " · late"}</p>
+                            {j.time_slot && <p>🕒 Estimated {TIME_SLOTS[j.time_slot]}</p>}
                             {!mine && <p className="text-slate-400">{branchName(j.branch)} ({j.branch}) is delivering this DO</p>}
                           </div>
                         )}
