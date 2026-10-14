@@ -2,11 +2,12 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
-import { DO_STATUSES, DO_STATUS_LABEL, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
+import { DO_STATUSES, DO_STATUS_LABEL, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { BranchTags, SoLinks } from "@/components/DocLinks";
 import { DoDate } from "@/components/MoveDate";
+import { DoOutstanding } from "@/components/Outstanding";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
   pending: "bg-slate-400",
@@ -96,10 +97,12 @@ export default async function DeliveriesPage({
     filtered(
       supabase
         .from("delivery_orders")
-        .select("*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), do_items(id), links:do_sales_orders(so_no, so_id)", {
-          count: "exact",
-        })
+        .select(
+          "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), do_items(id), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name))",
+          { count: "exact" }
+        )
     )
+      .is("outstanding.cleared_at", null) // only what's still outstanding; doesn't filter the DOs
       .order("delivery_date", { ascending: false })
       .order("created_at", { ascending: false })
       .range(0, limit - 1),
@@ -245,11 +248,12 @@ export default async function DeliveriesPage({
                     const mine = canPlan(profile.branch, j.branch);
                     const plannable = mine && PLANNABLE.includes(j.status);
                     const late = j.status !== "delivered" && j.delivery_date < today;
+                    const open = j.outstanding ?? [];
                     return (
-                      <article key={j.id} className="card space-y-2 p-3">
+                      <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                            {j.do_no}
+                            <DoOutstanding doId={j.id} doNo={j.do_no} open={open} />
                             {j.source === "special" && <span className="font-normal text-slate-400">· Special</span>}
                             {j.is_oc && <span className="font-normal text-slate-400">· O/C</span>}
                           </span>
@@ -264,6 +268,11 @@ export default async function DeliveriesPage({
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
                         {j.failed_reason && <p className="text-xs text-rose-600">{j.failed_reason}</p>}
+                        {open.map((o) => (
+                          <p key={o.id} className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
+                            ⚠ <span className="font-medium">{todoLabel(o)}</span> · {o.reason}
+                          </p>
+                        ))}
                         {plannable ? (
                           <div className="space-y-1.5">
                             <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} />

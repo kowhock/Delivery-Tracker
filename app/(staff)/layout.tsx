@@ -2,9 +2,15 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { signOut } from "../actions";
 import { NavLinks } from "@/components/NavLinks";
+import { deliveredOrSoldBy, lockedBranch } from "@/lib/branches";
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
-  const { profile } = await requireStaff();
+  const { supabase, profile } = await requireStaff();
+  // Badge on the Outstanding tab: not cleared yet (dispatchers: their branch's DOs only).
+  const locked = lockedBranch(profile);
+  let open = supabase.from("do_outstanding").select("id, delivery:delivery_orders!inner(id)", { count: "exact", head: true }).is("cleared_at", null);
+  if (locked) open = open.or(deliveredOrSoldBy(locked), { referencedTable: "delivery" });
+  const { count: outstanding } = await open;
 
   return (
     <div className="min-h-dvh">
@@ -14,7 +20,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
             <img src="/icons/logo.png" alt="" width={28} height={28} className="size-7 rounded-lg" />
             <span className="hidden sm:inline">Delivery Tracker</span>
           </Link>
-          <NavLinks role={profile.role} />
+          <NavLinks role={profile.role} outstanding={outstanding ?? 0} />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-slate-500 md:inline">
               {profile.full_name} · <span className="capitalize">{profile.role}</span>

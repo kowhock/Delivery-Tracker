@@ -179,6 +179,23 @@ create table public.status_events (
 create index on public.status_events (so_id);
 create index on public.status_events (do_id);
 
+-- ---------- Outstanding DO work (CN / edit DO / DR …) ----------------
+-- Office notes for a DO that still needs fixing in AutoCount; cleared once done.
+create table if not exists public.do_outstanding (
+  id          uuid primary key default gen_random_uuid(),
+  do_id       uuid not null references public.delivery_orders on delete cascade,
+  reason      text not null,
+  todo        text not null check (todo in ('cn', 'edit_do', 'dr', 'other')),
+  todo_other  text,                          -- what "Others" means
+  description text,
+  created_by  uuid default auth.uid() references public.profiles on delete set null,
+  created_at  timestamptz not null default now(),
+  cleared_at  timestamptz,                   -- null = still outstanding
+  cleared_by  uuid references public.profiles on delete set null
+);
+create index if not exists do_outstanding_do_id_idx on public.do_outstanding (do_id);
+create index if not exists do_outstanding_open_idx on public.do_outstanding (created_at) where cleared_at is null;
+
 -- ---------- How much of each SO line is already on a DO --------------
 create view public.so_item_progress with (security_invoker = true) as
 select
@@ -266,6 +283,7 @@ alter table public.delivery_orders enable row level security;
 alter table public.do_items        enable row level security;
 alter table public.do_sales_orders enable row level security;
 alter table public.status_events   enable row level security;
+alter table public.do_outstanding  enable row level security;
 
 -- Profiles: see yourself; staff see everyone; admins edit roles.
 create policy "read own or staff"   on public.profiles for select using (id = (select auth.uid()) or (select public.is_staff()));
@@ -279,6 +297,7 @@ create policy "staff all" on public.delivery_orders for all using ((select publi
 create policy "staff all" on public.do_items        for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.do_sales_orders for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.status_events   for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "staff all" on public.do_outstanding  for all using ((select public.is_staff())) with check ((select public.is_staff()));
 
 -- Drivers: only their own delivery jobs.
 create policy "driver reads own DOs" on public.delivery_orders

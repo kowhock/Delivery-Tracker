@@ -217,5 +217,25 @@ alter policy "driver logs own events" on public.status_events with check (actor_
   select 1 from public.delivery_orders d where d.id = do_id and d.driver_id = (select auth.uid())));
 alter policy "driver reads own events" on public.status_events using (actor_id = (select auth.uid()));
 
+-- ---------- Outstanding DO work (CN / edit DO / DR …) ----------------
+create table if not exists public.do_outstanding (
+  id          uuid primary key default gen_random_uuid(),
+  do_id       uuid not null references public.delivery_orders on delete cascade,
+  reason      text not null,
+  todo        text not null check (todo in ('cn', 'edit_do', 'dr', 'other')),
+  todo_other  text,                          -- what "Others" means
+  description text,
+  created_by  uuid default auth.uid() references public.profiles on delete set null,
+  created_at  timestamptz not null default now(),
+  cleared_at  timestamptz,                   -- null = still outstanding
+  cleared_by  uuid references public.profiles on delete set null
+);
+create index if not exists do_outstanding_do_id_idx on public.do_outstanding (do_id);
+create index if not exists do_outstanding_open_idx on public.do_outstanding (created_at) where cleared_at is null;
+alter table public.do_outstanding enable row level security;
+drop policy if exists "staff all" on public.do_outstanding;
+create policy "staff all" on public.do_outstanding for all using ((select public.is_staff())) with check ((select public.is_staff()));
+grant select, insert, update, delete on public.do_outstanding to authenticated;
+
 -- ---------- After upgrading: set users' branch and lorry number --------
 -- update profiles set branch = 'GP', lorry_no = '93' where full_name = 'Azli';

@@ -86,6 +86,7 @@ export type DeliveryOrder = {
   driver?: { full_name: string; lorry_no: string | null } | null;
   do_items?: DoItem[];
   links?: DoSoLink[];
+  outstanding?: Outstanding[]; // only the ones not cleared yet
 };
 
 export type StatusEvent = {
@@ -96,3 +97,30 @@ export type StatusEvent = {
   do_id: string | null;
   actor?: { full_name: string } | null;
 };
+
+export type OutstandingTodo = "cn" | "edit_do" | "dr" | "other";
+
+export const TODO_LABEL: Record<OutstandingTodo, string> = {
+  cn: "Add Credit Note (CN)",
+  edit_do: "Edit DO",
+  dr: "Add Delivery Return (DR)",
+  other: "Others",
+};
+
+/** Something the office still has to fix for a DO (in AutoCount); cleared once done. */
+export type Outstanding = {
+  id: string;
+  do_id: string;
+  reason: string;
+  todo: OutstandingTodo;
+  todo_other: string | null;
+  description: string | null;
+  created_at: string;
+  cleared_at: string | null;
+  creator?: { full_name: string } | null;
+  clearer?: { full_name: string } | null;
+};
+
+/** "Edit DO", or what was typed for "Others". */
+export const todoLabel = (o: Pick<Outstanding, "todo" | "todo_other">) =>
+  o.todo === "other" && o.todo_other ? o.todo_other : TODO_LABEL[o.todo];
