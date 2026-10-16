@@ -5,7 +5,7 @@ import { moveToTrip, optimiseTrip } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
 import { BranchTags, SoLinks } from "./DocLinks";
 import { PointsEditor } from "./PointsEditor";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, mapAddress } from "@/lib/format";
 import { withTripPoints } from "@/lib/commission";
 import { TIME_SLOTS, type DeliveryOrder, type DoStatus } from "@/lib/types";
 
@@ -191,7 +191,7 @@ export function DriverTrips({
                   <DoBadge status={j.status} />
                 </div>
                 <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
-                {j.address && <p className="line-clamp-2 text-slate-500">{j.address}</p>}
+                {mapAddress(j) && <p className="line-clamp-2 text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                 {j.time_slot && <p className="text-sky-700">🕒 Estimated {TIME_SLOTS[j.time_slot]}</p>}
                 {j.remarks && <p className="line-clamp-2 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">{j.remarks}</p>}
                 <div className="flex items-center justify-between gap-2 text-slate-400">

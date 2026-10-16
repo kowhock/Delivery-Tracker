@@ -9,6 +9,12 @@
 -- Changes before 2026-10-16 are in git history (git log -p supabase/upgrade.sql).
 -- =====================================================================
 
+-- ---------- Delivery orders: address typed in by the office ---------------
+-- When Google can't find the AutoCount delivery address, the office types one it
+-- can find. Distance, points, best route and the driver's Waze/Maps then use it.
+-- null = use the delivery address. Imports never touch it.
+alter table public.delivery_orders add column if not exists map_address text;
+
 -- ---------- Lorries ----------------------------------------------------
 -- Each lorry has at most one driver, and each driver at most one lorry.
 -- profiles.lorry_no is kept in step by a trigger (it's shown next to drivers' names).
@@ -61,6 +67,7 @@ begin
     new.instructions  := old.instructions;
     new.own_collection := old.own_collection;
     new.lorry_id      := old.lorry_id;
+    new.map_address   := old.map_address;
   end if;
   if new.status = 'delivered' and old.status is distinct from 'delivered' then
     new.delivered_at := now();

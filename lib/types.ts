@@ -67,6 +67,7 @@ export type DeliveryOrder = {
   customer_name: string;
   contact_phone: string | null;
   address: string | null;
+  map_address: string | null; // typed by the office when Google can't find `address`
   remarks: string | null;
   delivery_date: string;
   time_slot: TimeSlot | null; // optional estimated delivery window
@@ -84,6 +85,7 @@ export type DeliveryOrder = {
   distance_km: number | null;
   geo_status: string | null; // ok | approx | not_found | no_store | no_address | error
   geo_address: string | null;
+  geo_input: string | null; // the address distance was last worked out from
   geo_lat: number | null;
   geo_lng: number | null;
   own_collection: boolean | null; // office's O/C pick; null = auto from remarks/address

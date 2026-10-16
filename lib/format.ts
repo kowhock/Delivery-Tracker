@@ -62,7 +62,18 @@ export function isMobile(normalized: string | null): boolean {
   return !!normalized && /^601\d{8,9}$/.test(normalized);
 }
 
-export function mapsLinks(address: string) {
+/** The address to find on the map: the one the office typed in, else the delivery address. */
+export const mapAddress = (d: { address: string | null; map_address?: string | null }) => d.map_address?.trim() || d.address;
+
+/** Waze / Google Maps links. Pass `at` (the spot Google found) to navigate there exactly. */
+export function mapsLinks(address: string, at?: { lat: number; lng: number } | null) {
+  if (at) {
+    const ll = `${at.lat},${at.lng}`;
+    return {
+      waze: `https://waze.com/ul?ll=${ll}&navigate=yes`,
+      google: `https://www.google.com/maps/search/?api=1&query=${ll}`,
+    };
+  }
   const q = encodeURIComponent(address);
   return {
     waze: `https://waze.com/ul?q=${q}&navigate=yes`,

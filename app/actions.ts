@@ -58,7 +58,7 @@ export async function importAutoCount(data: AcImport): Promise<AcImportResult> {
       const d = await updateDistances(supabase, ids);
       result.notes = [
         `Distance & points worked out for ${d.measured} DOs.` +
-          (d.needManual ? ` ${d.needManual} need points keyed in on Driver status (address not found or no store address).` : ""),
+          (d.needManual ? ` ${d.needManual} need points keyed in or an address typed in on Driver status (click their ⭐).` : ""),
       ];
     }
   }
@@ -180,6 +180,27 @@ export async function setPoints(doId: string, points: number | null) {
   revalidatePath("/drivers");
   revalidatePath("/deliveries");
   revalidatePath("/driver");
+}
+
+/**
+ * Office types an address Google can find (when the delivery address can't be found).
+ * Distance and points are worked out from it, and the driver's Waze/Maps go there.
+ * null = back to the delivery address. Replaces keyed-in points.
+ */
+export async function setMapAddress(doId: string, address: string | null) {
+  const { supabase } = await requireStaff();
+  if (!mapsEnabled()) throw new Error("GOOGLE_MAPS_API_KEY is not set on the server.");
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({ map_address: address?.trim() || null, points: null, points_manual: false, geo_status: null })
+    .eq("id", doId);
+  if (error) throw new Error(error.message);
+  await updateDistances(supabase, [doId], true);
+  const { data } = await supabase.from("delivery_orders").select("points, geo_status").eq("id", doId).single();
+  revalidatePath("/drivers");
+  revalidatePath("/deliveries");
+  revalidatePath("/driver");
+  return { found: data?.points != null, status: (data?.geo_status ?? null) as string | null };
 }
 
 /** Works out distance + points for DOs that don't have points yet (e.g. after adding a store address). */
@@ -376,7 +397,7 @@ export async function optimiseTrip(lane: { driverId: string; date: string; tripN
     supabase.from("profiles").select("branch").eq("id", lane.driverId).single(),
     supabase
       .from("delivery_orders")
-      .select("id, do_no, status, branch, address, geo_input, geo_lat, geo_lng, trip_seq")
+      .select("id, do_no, status, branch, address, map_address, geo_input, geo_lat, geo_lng, trip_seq")
       .eq("driver_id", lane.driverId)
       .eq("delivery_date", lane.date)
       .eq("trip_no", lane.tripNo)

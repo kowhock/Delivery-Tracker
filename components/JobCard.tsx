@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { markDelivered, markFailed, startDelivery } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
-import { fmtQty, mapsLinks } from "@/lib/format";
+import { fmtQty, mapAddress, mapsLinks } from "@/lib/format";
 import { MESSAGES, whatsappLink } from "@/lib/whatsapp";
 import { TIME_SLOTS, type DeliveryOrder } from "@/lib/types";
 
@@ -18,7 +18,10 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
   const msgData = { customer_name: job.customer_name, so_no: job.so_no, do_no: job.do_no, driverName };
   const waOnTheWay = whatsappLink(job.contact_phone, MESSAGES.out_for_delivery(msgData));
   const waDelivered = whatsappLink(job.contact_phone, MESSAGES.delivered(msgData));
-  const maps = job.address ? mapsLinks(job.address) : null;
+  // The office's typed address goes to the exact spot Google found for it.
+  const address = mapAddress(job);
+  const spot = job.map_address && job.geo_lat != null && job.geo_lng != null && job.geo_input === address ? { lat: job.geo_lat, lng: job.geo_lng } : null;
+  const maps = address ? mapsLinks(address, spot) : null;
   const finished = job.status === "delivered";
 
   const run = (fn: () => Promise<void>) =>
@@ -48,7 +51,8 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
           <DoBadge status={job.status} />
         </div>
 
-        {job.address && <p className="text-sm text-slate-600">{job.address}</p>}
+        {address && <p className="text-sm text-slate-600">{address}</p>}
+        {job.map_address && job.address && <p className="text-xs text-slate-400">AutoCount: {job.address}</p>}
         {job.time_slot && <p className="text-sm font-medium text-sky-700">🕒 Estimated {TIME_SLOTS[job.time_slot]}</p>}
         {job.instructions && <p className="rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-900">📋 {job.instructions}</p>}
         {job.remarks && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">📝 {job.remarks}</p>}

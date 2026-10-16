@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { branchName, lockedBranch } from "@/lib/branches";
-import { addDays, dateRange, todayMY } from "@/lib/format";
+import { addDays, dateRange, mapAddress, todayMY } from "@/lib/format";
 import { commissionForDay, withTripPoints } from "@/lib/commission";
 import { lorryLabel, type Lorry, type Profile } from "@/lib/types";
 import { TripForm, type TripDay } from "@/components/TripForm";
@@ -38,7 +38,7 @@ export default async function TripFormPage({
     // Commission counts what was delivered on each day (delivered_at), like Driver status.
     const { data: rows } = await supabase
       .from("delivery_orders")
-      .select("id, do_no, customer_name, address, driver_id, delivery_date, trip_no, points, points_manual, delivered_at, lorry_id")
+      .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, points, points_manual, delivered_at, lorry_id")
       .eq("driver_id", driver.id)
       .eq("status", "delivered")
       .eq("cancelled", false)
@@ -84,7 +84,7 @@ export default async function TripFormPage({
         dos: mine.map((d) => ({
           id: d.id,
           doNo: d.do_no,
-          location: d.address || d.customer_name,
+          location: mapAddress(d) || d.customer_name,
           timeIn: timeOf(started.get(d.id)),
           timeBack: timeOf(d.delivered_at),
           points: d.points,

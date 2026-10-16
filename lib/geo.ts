@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { storeAddress } from "./branches";
 import { pointsForKm } from "./commission";
+import { mapAddress } from "./format";
 
 /**
  * Store → customer driving distance with Google Maps, turned into driver points.
@@ -57,21 +58,22 @@ function storeLocation(address: string) {
   return storeCache.get(address)!;
 }
 
-type DoRow = { id: string; address: string | null; branch: string | null; points_manual: boolean; geo_input: string | null; geo_status: string | null };
+type DoRow = { id: string; address: string | null; map_address: string | null; branch: string | null; points_manual: boolean; geo_input: string | null; geo_status: string | null };
 
 async function measure(d: DoRow) {
+  const address = mapAddress(d);
   const base = {
-    geo_input: d.address,
+    geo_input: address,
     distance_km: null as number | null,
     geo_address: null as string | null,
     geo_lat: null as number | null,
     geo_lng: null as number | null,
   };
   const store = storeAddress(d.branch);
-  if (!d.address?.trim()) return { ...base, geo_status: "no_address", points: null };
+  if (!address?.trim()) return { ...base, geo_status: "no_address", points: null };
   if (!store) return { ...base, geo_status: "no_store", points: null };
   try {
-    const [from, to] = await Promise.all([storeLocation(store), geocode(d.address)]);
+    const [from, to] = await Promise.all([storeLocation(store), geocode(address)]);
     if (!from) return { ...base, geo_status: "no_store", points: null };
     if (!to) return { ...base, geo_status: "not_found", points: null };
     const km = Math.round((await drivingKm(from.at, to.at)) * 100) / 100;
@@ -103,13 +105,13 @@ export async function updateDistances(supabase: SupabaseClient, doIds: string[],
   for (let i = 0; i < doIds.length; i += 200) {
     const { data } = await supabase
       .from("delivery_orders")
-      .select("id, address, branch, points_manual, geo_input, geo_status")
+      .select("id, address, map_address, branch, points_manual, geo_input, geo_status")
       .in("id", doIds.slice(i, i + 200));
     rows.push(...((data ?? []) as DoRow[]));
   }
   // New or changed address, or last try hit an error. "Not found" isn't retried until the address changes.
   const todo = rows.filter(
-    (d) => !d.points_manual && (force || !d.geo_status || d.geo_status === "error" || d.geo_input !== d.address)
+    (d) => !d.points_manual && (force || !d.geo_status || d.geo_status === "error" || d.geo_input !== mapAddress(d))
   );
   summary.skipped = rows.length - todo.length;
 
@@ -132,7 +134,7 @@ export async function updateDistances(supabase: SupabaseClient, doIds: string[],
 /** Google allows up to 25 stops between start and end when it reorders them. */
 export const MAX_ROUTE_STOPS = 25;
 
-type Stop = { id: string; address: string | null; geo_input: string | null; geo_lat: number | null; geo_lng: number | null };
+type Stop = { id: string; address: string | null; map_address: string | null; geo_input: string | null; geo_lat: number | null; geo_lng: number | null };
 
 /**
  * Where each DO is on the map: the saved spot when it's from the current
@@ -141,9 +143,10 @@ type Stop = { id: string; address: string | null; geo_input: string | null; geo_
 async function locate(supabase: SupabaseClient, stops: Stop[]) {
   return Promise.all(
     stops.map(async (s): Promise<LatLng | null> => {
-      if (s.geo_lat != null && s.geo_lng != null && s.geo_input === s.address) return { lat: s.geo_lat, lng: s.geo_lng };
-      if (!s.address?.trim()) return null;
-      const g = await geocode(s.address).catch(() => null);
+      const address = mapAddress(s);
+      if (s.geo_lat != null && s.geo_lng != null && s.geo_input === address) return { lat: s.geo_lat, lng: s.geo_lng };
+      if (!address?.trim()) return null;
+      const g = await geocode(address).catch(() => null);
       if (g) await supabase.from("delivery_orders").update({ geo_lat: g.at.lat, geo_lng: g.at.lng }).eq("id", s.id);
       return g?.at ?? null;
     })

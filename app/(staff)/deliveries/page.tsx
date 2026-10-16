@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { driverLabel, fmtDate, todayMY } from "@/lib/format";
+import { driverLabel, fmtDate, mapAddress, todayMY } from "@/lib/format";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
@@ -264,7 +264,7 @@ export default async function DeliveriesPage({
                           {j.source !== "special" && <span className="text-slate-400"> · {j.do_items?.length ?? 0} items</span>}
                         </p>
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
-                        {j.address && <p className="line-clamp-2 text-xs text-slate-500">{j.address}</p>}
+                        {mapAddress(j) && <p className="line-clamp-2 text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
                         {j.failed_reason && <p className="text-xs text-rose-600">{j.failed_reason}</p>}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { calculateMissingPoints, setPoints } from "@/app/actions";
+import { calculateMissingPoints, setMapAddress, setPoints } from "@/app/actions";
 import type { DeliveryOrder } from "@/lib/types";
 import { EXTRA_STOP_POINTS } from "@/lib/commission";
 
@@ -12,15 +12,17 @@ const WHY_MISSING: Record<string, string> = {
   error: "map lookup failed",
 };
 
-type Job = Pick<DeliveryOrder, "id" | "points" | "points_manual" | "distance_km" | "geo_status" | "geo_address">;
+type Job = Pick<DeliveryOrder, "id" | "address" | "map_address" | "points" | "points_manual" | "distance_km" | "geo_status" | "geo_address">;
 
 /**
- * Points chip on a DO card; click to key points in (or go back to the distance rule).
+ * Points chip on a DO card; click to key points in, type an address Google can find
+ * (when the delivery address can't be found), or go back to the distance rule.
  * `extraStop`: another DO in the same trip has the full points, so this one earns EXTRA_STOP_POINTS.
  */
 export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; extraStop?: boolean; onEditing?: (editing: boolean) => void }) {
   const [editing, setEditingState] = useState(false);
   const [value, setValue] = useState(String(job.points ?? ""));
+  const [address, setAddress] = useState(job.map_address ?? job.address ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -28,7 +30,10 @@ export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; 
     setEditingState(on);
     onEditing?.(on);
     setError(null);
-    if (on) setValue(String(job.points ?? ""));
+    if (on) {
+      setValue(String(job.points ?? ""));
+      setAddress(job.map_address ?? job.address ?? "");
+    }
   };
   const save = (points: number | null) =>
     start(async () => {
@@ -37,6 +42,19 @@ export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; 
         setEditing(false);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not save");
+      }
+    });
+
+  /** Distance + points from a typed address (null = the delivery address again). */
+  const find = (typed: string | null) =>
+    start(async () => {
+      try {
+        setError(null);
+        const r = await setMapAddress(job.id, typed);
+        if (r.found) setEditing(false);
+        else setError(`Still not found (${WHY_MISSING[r.status ?? ""] ?? "no distance"}) — add the taman / town, or key in points.`);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not find it");
       }
     });
 
@@ -63,6 +81,30 @@ export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; 
           </button>
           <button onClick={() => setEditing(false)} className="px-1 text-slate-400 hover:text-slate-700" aria-label="Cancel">✕</button>
         </div>
+        <div className="flex items-center gap-1">
+          <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && address.trim()) find(address);
+              if (e.key === "Escape") setEditing(false);
+            }}
+            placeholder="Address to find on the map"
+            className="input w-56 px-2 py-1 text-xs"
+            aria-label="Address for the map"
+          />
+          <button disabled={pending || !address.trim()} onClick={() => find(address)} className="btn-secondary px-2 py-1 text-xs">
+            📍 Find
+          </button>
+        </div>
+        {job.map_address && (
+          <p className="text-[11px] text-slate-500">
+            AutoCount: {job.address || "no address"} ·{" "}
+            <button disabled={pending} onClick={() => find(null)} className="text-brand-700 hover:underline">
+              use it again
+            </button>
+          </p>
+        )}
         {job.points_manual && (
           <button disabled={pending} onClick={() => save(null)} className="text-[11px] text-brand-700 hover:underline">
             Use distance rule instead
@@ -77,7 +119,7 @@ export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; 
   const detail = job.points_manual
     ? "keyed in"
     : job.distance_km != null
-      ? `${job.geo_status === "approx" ? "~" : ""}${Number(job.distance_km).toFixed(1)} km`
+      ? `${job.geo_status === "approx" ? "~" : ""}${Number(job.distance_km).toFixed(1)} km${job.map_address ? " · typed address" : ""}`
       : missing
         ? WHY_MISSING[job.geo_status ?? ""] ?? "not calculated"
         : "";
@@ -88,7 +130,8 @@ export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; 
       onClick={() => setEditing(true)}
       title={
         (extraStop ? `Extra stop in this trip: ${EXTRA_STOP_POINTS} pt (${job.points} pts if it were the only DO)\n` : "") +
-        (job.geo_address ? `Matched: ${job.geo_address}\nClick to change points` : "Click to set points")
+        (job.map_address ? `Typed address: ${job.map_address}\n` : "") +
+        (job.geo_address ? `Matched: ${job.geo_address}\nClick to change points or address` : "Click to set points or type an address")
       }
       className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
         missing ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200 ring-inset" : "bg-yellow-50 text-yellow-800"

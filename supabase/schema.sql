@@ -140,6 +140,7 @@ create table public.delivery_orders (
   customer_name  text not null,
   contact_phone  text,
   address        text,                         -- AutoCount Delivery Address 1
+  map_address    text,                         -- typed by the office when Google can't find `address`; null = use address
   remarks        text,                         -- Remark 1 of the linked SO(s)
   delivery_date  date not null default current_date,
   time_slot      text check (time_slot in ('0845-1100', '1100-1300', '1300-1500', '1500-1700', '1700-1900', '1900-2100')), -- optional estimated delivery window
@@ -306,6 +307,7 @@ begin
     new.instructions  := old.instructions;
     new.own_collection := old.own_collection;
     new.lorry_id      := old.lorry_id;
+    new.map_address   := old.map_address;
   end if;
   if new.status = 'delivered' and old.status is distinct from 'delivered' then
     new.delivered_at := now();
