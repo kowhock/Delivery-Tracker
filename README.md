@@ -14,7 +14,7 @@ Built with Next.js, Supabase and Tailwind. SOs and DOs come from AutoCount (Exce
 | `/import` | office | Upload the AutoCount SO or DO listing (.xlsx/.csv); SO ↔ DO are linked automatically |
 | `/driver` | drivers | Phone view: today's jobs, Waze/Maps/Call, start → delivered with photo, or failed with reason, WhatsApp buttons |
 
-Roles: **admin** and **dispatcher** see everything. **driver** only sees their own jobs (enforced in the database, not just the UI).
+Roles: **admin** and **dispatcher** see everything. **driver** only sees their own jobs.
 
 ## Setup (about 15 minutes)
 
@@ -24,7 +24,7 @@ Roles: **admin** and **dispatcher** see everything. **driver** only sees their o
    ```
 2. **Create a Supabase project** at [supabase.com](https://supabase.com) (pick the Singapore region, it's closest to Malaysia).
 3. **Create the database**: Supabase → SQL Editor → paste all of `supabase/schema.sql` → Run.
-   Database created with an older version? Run `supabase/upgrade.sql` once instead (safe to run again).
+   Changing the database later: put the change in `supabase/upgrade.sql`, run it, copy it into `schema.sql`, then empty `upgrade.sql` (steps at the top of that file).
 4. **Connect the app**: copy `.env.example` to `.env.local` and fill in the URL and anon/publishable key from Supabase → Project Settings → API.
 5. **Create users**: Supabase → Authentication → Users → Add user → Create new user, tick *Auto Confirm User*.
    For a username login, use the email `<username>@khdelivery.my` (e.g. `ali@khdelivery.my` signs in as `ali`;
@@ -66,11 +66,10 @@ which take AutoCount documents in the shape defined in `lib/autocount-rows.ts`.
 - WhatsApp message wording: `lib/whatsapp.ts`
 - Failure reasons for drivers: `FAIL_REASONS` in `components/JobCard.tsx`
 - Accent colour: `--color-brand-*` in `app/globals.css`
-- DO numbering (`DO-000001`): the `do_no` default in `supabase/schema.sql`
+- Special DO numbering (`SDO-000001`): the `do_no` default in `supabase/schema.sql`
 
 ## Next ideas
 
 - Automatic WhatsApp messages (Meta WhatsApp Cloud API) instead of tap-to-send buttons
 - AutoCount sync script
 - Reports: on-time rate per driver, failed deliveries by reason
-- PO tracking

@@ -1,6 +1,10 @@
 -- =====================================================================
 -- Delivery Tracker — database schema
 -- Run this whole file once in Supabase → SQL Editor → New query → Run.
+--
+-- This is the database as it is now (matches the live project). To change
+-- it: write the change in upgrade.sql, run that on Supabase, then make the
+-- same change here and empty upgrade.sql again.
 -- =====================================================================
 
 -- ---------- Enums ----------------------------------------------------
@@ -109,7 +113,7 @@ create table public.delivery_orders (
   invoice_no     text,                         -- AutoCount Transfer To (invoice)
   created_user   text,                         -- AutoCount Created User
   cancelled      boolean not null default false,
-  source         text not null default 'manual', -- autocount | special
+  source         text not null default 'manual', -- autocount | special (keyed in by the office)
   instructions   text,                         -- office → driver (special DOs)
   points         int check (points between 0 and 99), -- commission points: 3 if > 20 km, else 2
   points_manual  boolean not null default false, -- keyed in by the office
@@ -182,7 +186,7 @@ create index on public.status_events (do_id);
 
 -- ---------- Outstanding DO work (CN / edit DO / DR …) ----------------
 -- Office notes for a DO that still needs fixing in AutoCount; cleared once done.
-create table if not exists public.do_outstanding (
+create table public.do_outstanding (
   id          uuid primary key default gen_random_uuid(),
   do_id       uuid not null references public.delivery_orders on delete cascade,
   reason      text not null,
@@ -194,8 +198,8 @@ create table if not exists public.do_outstanding (
   cleared_at  timestamptz,                   -- null = still outstanding
   cleared_by  uuid references public.profiles on delete set null
 );
-create index if not exists do_outstanding_do_id_idx on public.do_outstanding (do_id);
-create index if not exists do_outstanding_open_idx on public.do_outstanding (created_at) where cleared_at is null;
+create index do_outstanding_do_id_idx on public.do_outstanding (do_id);
+create index do_outstanding_open_idx on public.do_outstanding (created_at) where cleared_at is null;
 
 -- ---------- How much of each SO line is already on a DO --------------
 create view public.so_item_progress with (security_invoker = true) as
@@ -270,7 +274,6 @@ begin
   return new;
 end $$;
 
-drop trigger if exists guard_delivery_order on public.delivery_orders;
 create trigger guard_delivery_order
   before update on public.delivery_orders
   for each row execute function public.guard_delivery_order();
@@ -327,3 +330,6 @@ on conflict (id) do nothing;
 
 create policy "pod upload" on storage.objects for insert to authenticated with check (bucket_id = 'pod');
 create policy "pod read"   on storage.objects for select to authenticated using (bucket_id = 'pod');
+
+-- ---------- After setup: users' branch and lorry number ---------------
+-- update profiles set branch = 'GP', lorry_no = '93' where full_name = 'Azli';
