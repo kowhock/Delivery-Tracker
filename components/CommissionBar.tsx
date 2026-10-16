@@ -8,7 +8,7 @@ const CONFETTI = ["🎉", "💰", "⭐", "🎊", "💵", "✨"];
 
 /**
  * Daily commission progress for the driver: a little lorry drives toward the
- * POINTS_TARGET flag; every point after that in a day earns RM_PER_POINT.
+ * POINTS_TARGET flag (worth RM_PER_POINT); every point after that in a day earns RM_PER_POINT more.
  */
 export function CommissionBar({
   date,
@@ -79,14 +79,14 @@ export function CommissionBar({
   const message = !isToday
     ? `${delivered} delivered · ${points} pts · RM ${earned} earned`
     : points === 0
-      ? `Let's go! After ${POINTS_TARGET} pts, every point = RM ${RM_PER_POINT} 💪`
+      ? `Let's go! ${POINTS_TARGET} pts = RM ${RM_PER_POINT}, then every point +RM ${RM_PER_POINT} 💪`
       : unlocked
         ? earned
           ? `🎉 RM ${earned} earned! Every extra point = RM ${RM_PER_POINT}`
           : `🎉 ${POINTS_TARGET} pts! Next point = RM ${RM_PER_POINT}`
         : left === 1
-          ? `Just 1 more point to unlock RM ${RM_PER_POINT}/pt! 🔥`
-          : `${left} more pts to unlock RM ${RM_PER_POINT}/pt`;
+          ? `Just 1 more point to earn RM ${RM_PER_POINT}! 🔥`
+          : `${left} more pts to earn RM ${RM_PER_POINT}`;
 
   return (
     <section className="card relative overflow-hidden p-4">
@@ -178,7 +178,7 @@ export function CommissionBar({
       </div>
       {showRules && (
         <ul className="pop-in mt-2 space-y-1 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-          <li>💰 Collect {POINTS_TARGET} points in a day, then every extra one point you get RM{RM_PER_POINT} ! </li>
+          <li>💰 Collect {POINTS_TARGET} points in a day = RM{RM_PER_POINT}, then every extra point another RM{RM_PER_POINT}!</li>
           <li>🕐 &ldquo;Pending&rdquo; points are being checked by the office.</li>
         </ul>
       )}

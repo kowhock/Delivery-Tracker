@@ -89,6 +89,7 @@ export type DeliveryOrder = {
   own_collection: boolean | null; // office's O/C pick; null = auto from remarks/address
   is_oc: boolean; // O/C = customer collects at the store (no delivery)
   driver_id: string | null;
+  lorry_id: string | null; // lorry it was delivered with (set when delivered)
   trip_no: number;
   trip_seq: number;
   status: DoStatus;
@@ -136,3 +137,22 @@ export type Outstanding = {
 /** "Edit DO", or what was typed for "Others". */
 export const todoLabel = (o: Pick<Outstanding, "todo" | "todo_other">) =>
   o.todo === "other" && o.todo_other ? o.todo_other : TODO_LABEL[o.todo];
+
+/** A lorry, its driver (if any) and its maintenance booking. */
+export type Lorry = {
+  id: string;
+  lorry_no: string;
+  plate_no: string | null;
+  branch: string | null;
+  driver_id: string | null;
+  maintenance_from: string | null; // set = under (or booked for) maintenance from this day
+  maintenance_to: string | null; // expected back; null = not known yet
+  maintenance_note: string | null;
+};
+
+/** "JQN 9833 (46)", as on the trip forms; just "46" without a plate. */
+export const lorryLabel = (l: Pick<Lorry, "lorry_no" | "plate_no">) => (l.plate_no ? `${l.plate_no} (${l.lorry_no})` : l.lorry_no);
+
+/** Under maintenance on `day` (YYYY-MM-DD). */
+export const inMaintenance = (l: Pick<Lorry, "maintenance_from" | "maintenance_to">, day: string) =>
+  !!l.maintenance_from && l.maintenance_from <= day && (!l.maintenance_to || l.maintenance_to >= day);

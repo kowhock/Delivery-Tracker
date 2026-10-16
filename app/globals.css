@@ -56,3 +56,11 @@
 @media (prefers-reduced-motion: reduce) {
   .lorry-bob, .lorry-jump, .wheel-spin, .dust-puff, .confetti { animation: none }
 }
+
+/* ---------- Trip forms: one A4 page per form when printed / saved as PDF ---------- */
+@page { size: A4; margin: 10mm }
+@media print {
+  body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact }
+  .trip-page { break-after: page }
+  .trip-page:last-child { break-after: auto }
+}

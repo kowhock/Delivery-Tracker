@@ -50,6 +50,43 @@ language sql stable set search_path = '' as $$
   select coalesce(public.my_role() in ('admin', 'dispatcher'), false)
 $$;
 
+-- ---------- Lorries ----------------------------------------------------
+-- Each lorry has at most one driver, and each driver at most one lorry.
+-- profiles.lorry_no is kept in step by a trigger (it's shown next to drivers' names).
+create table public.lorries (
+  id               uuid primary key default gen_random_uuid(),
+  lorry_no         text not null unique,       -- number painted on the lorry, e.g. "46"
+  plate_no         text,                       -- e.g. "JQN 9833"
+  branch           text,
+  driver_id        uuid unique references public.profiles on delete set null,
+  maintenance_from date,                       -- set = under (or booked for) maintenance from this day
+  maintenance_to   date,                       -- expected back; null = not known yet
+  maintenance_note text,
+  created_at       timestamptz not null default now()
+);
+
+-- History: driver changes and maintenance, newest first on the Lorries page.
+create table public.lorry_events (
+  id         bigint generated always as identity primary key,
+  lorry_id   uuid not null references public.lorries on delete cascade,
+  note       text not null,
+  actor_id   uuid default auth.uid() references public.profiles on delete set null,
+  created_at timestamptz not null default now()
+);
+create index lorry_events_lorry_idx on public.lorry_events (lorry_id, created_at);
+
+create or replace function public.sync_lorry_no() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  update public.profiles p set lorry_no = (select l.lorry_no from public.lorries l where l.driver_id = p.id)
+  where p.id in (old.driver_id, new.driver_id);
+  return null;
+end $$;
+
+create trigger sync_lorry_no
+  after insert or update or delete on public.lorries
+  for each row execute function public.sync_lorry_no();
+
 -- ---------- Sales orders (shaped like AutoCount SO) -------------------
 create table public.sales_orders (
   id            uuid primary key default gen_random_uuid(),
@@ -128,6 +165,7 @@ create table public.delivery_orders (
                    coalesce(remarks, '') ~* '(^|[^a-z0-9])(o\s*/\s*c([^a-z0-9]|$)|own\s*collect)'
                    or coalesce(address, '') ~* '(^|[^a-z0-9])(o\s*/\s*c([^a-z0-9]|$)|own\s*collect)')) stored,
   driver_id      uuid references public.profiles on delete set null,
+  lorry_id       uuid references public.lorries on delete set null, -- lorry it was delivered with (set when delivered)
   trip_no        int not null default 1 check (trip_no > 0), -- which trip of the driver's day
   trip_seq       int not null default 0,                     -- stop order inside the trip
   status         public.do_status not null default 'pending',
@@ -267,9 +305,11 @@ begin
     new.distance_km   := old.distance_km;
     new.instructions  := old.instructions;
     new.own_collection := old.own_collection;
+    new.lorry_id      := old.lorry_id;
   end if;
   if new.status = 'delivered' and old.status is distinct from 'delivered' then
     new.delivered_at := now();
+    new.lorry_id := coalesce((select l.id from public.lorries l where l.driver_id = new.driver_id), new.lorry_id);
   end if;
   return new;
 end $$;
@@ -288,6 +328,8 @@ alter table public.do_items        enable row level security;
 alter table public.do_sales_orders enable row level security;
 alter table public.status_events   enable row level security;
 alter table public.do_outstanding  enable row level security;
+alter table public.lorries         enable row level security;
+alter table public.lorry_events    enable row level security;
 
 -- Profiles: see yourself; staff see everyone; admins edit roles.
 create policy "read own or staff"   on public.profiles for select using (id = (select auth.uid()) or (select public.is_staff()));
@@ -302,6 +344,8 @@ create policy "staff all" on public.do_items        for all using ((select publi
 create policy "staff all" on public.do_sales_orders for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.status_events   for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.do_outstanding  for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "staff all" on public.lorries         for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "staff all" on public.lorry_events    for all using ((select public.is_staff())) with check ((select public.is_staff()));
 
 -- Drivers: only their own delivery jobs.
 create policy "driver reads own DOs" on public.delivery_orders

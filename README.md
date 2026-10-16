@@ -9,6 +9,8 @@ Built with Next.js, Supabase and Tailwind. SOs and DOs come from AutoCount (Exce
 |---|---|---|
 | `/deliveries` | office | Board of DOs by status (today by default), assign drivers, updates live |
 | `/drivers` | office | Driver status: each driver's orders from date to date, split into trips; drag orders to plan trips. Opens on your own branch's drivers; switch branch with the dropdown |
+| `/lorries` | office | Each lorry's driver and what it's doing today; change driver (asks first if the lorry or driver is taken), book maintenance, history |
+| `/trip-form` | office | A driver's daily (one day) or monthly (date range) trip form with points and commission; PDF via print, or Excel |
 | `/orders` | office | SO list with search, status and date filters |
 | `/orders/[id]` | office | SO detail with AutoCount fields, its DOs (one SO can have many), POD photos, timeline |
 | `/import` | office | Upload the AutoCount SO or DO listing (.xlsx/.csv); SO ↔ DO are linked automatically |

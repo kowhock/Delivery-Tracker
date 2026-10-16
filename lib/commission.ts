@@ -4,8 +4,8 @@
  *   distance is over FAR_KM, else NEAR_POINTS (or what the office keyed in).
  * - In one trip only one DO earns its full points (the one worth most); every
  *   other DO in that trip earns EXTRA_STOP_POINTS. Keyed-in points are kept as keyed.
- * - The first POINTS_TARGET points in a day earn nothing; every point after
- *   that earns RM_PER_POINT (e.g. 11 pts = RM 5, 12 pts = RM 10).
+ * - Reaching POINTS_TARGET points in a day earns RM_PER_POINT, and every point
+ *   after that another RM_PER_POINT (9 pts = RM 0, 10 = RM 5, 11 = RM 10, 15 = RM 30).
  */
 export const POINTS_TARGET = 10;
 export const RM_PER_POINT = 5;
@@ -17,7 +17,7 @@ export const EXTRA_STOP_POINTS = 1;
 export const pointsForKm = (km: number) => (km > FAR_KM ? FAR_POINTS : NEAR_POINTS);
 
 /** RM earned for one day's points. */
-export const commissionForDay = (points: number) => Math.max(0, points - POINTS_TARGET) * RM_PER_POINT;
+export const commissionForDay = (points: number) => Math.max(0, points - POINTS_TARGET + 1) * RM_PER_POINT;
 
 type TripRow = {
   id: string;
