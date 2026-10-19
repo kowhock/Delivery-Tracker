@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FAR_KM, FAR_POINTS, NEAR_POINTS, POINTS_TARGET, RM_PER_POINT, commissionForDay } from "@/lib/commission";
+import { DICT, type Lang } from "@/lib/i18n";
 
-const CHEERS = ["Vroom vroom! 💨", "Beep beep! 🚚", "You're on fire! 🔥", "Hebat! 💪", "Jalan terus! 🛣️", "Champion driver! 🏆", "Almost there! ⭐"];
 const CONFETTI = ["🎉", "💰", "⭐", "🎊", "💵", "✨"];
 
 /**
@@ -11,18 +11,21 @@ const CONFETTI = ["🎉", "💰", "⭐", "🎊", "💵", "✨"];
  * POINTS_TARGET flag (worth RM_PER_POINT); every point after that in a day earns RM_PER_POINT more.
  */
 export function CommissionBar({
+  lang = "en",
   date,
   isToday,
   delivered,
   points,
   missingPoints,
 }: {
+  lang?: Lang;
   date: string;
   isToday: boolean;
   delivered: number;
   points: number;
   missingPoints: number;
 }) {
+  const t = DICT[lang];
   const earned = commissionForDay(points);
   const unlocked = points >= POINTS_TARGET;
   const steps = Math.min(points, POINTS_TARGET);
@@ -47,15 +50,15 @@ export function CommissionBar({
       sessionStorage.setItem(key, String(points));
     } catch {}
     setParty(true);
-    setCheer(earned ? `RM ${earned} earned! 🎉` : `${POINTS_TARGET} pts! Now every point = RM ${RM_PER_POINT} 🎉`);
-    const t = setTimeout(() => setParty(false), 1600);
-    return () => clearTimeout(t);
-  }, [isToday, unlocked, points, date, earned]);
+    setCheer(earned ? t.partyEarned(earned) : t.partyTarget(POINTS_TARGET, RM_PER_POINT));
+    const timer = setTimeout(() => setParty(false), 1600);
+    return () => clearTimeout(timer);
+  }, [isToday, unlocked, points, date, earned, t]);
 
   useEffect(() => {
     if (!cheer) return;
-    const t = setTimeout(() => setCheer(null), 1800);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCheer(null), 1800);
+    return () => clearTimeout(timer);
   }, [cheer]);
 
   const confetti = useMemo(
@@ -71,22 +74,22 @@ export function CommissionBar({
   );
 
   const honk = () => {
-    setCheer(CHEERS[Math.floor(Math.random() * CHEERS.length)]);
+    setCheer(t.cheers[Math.floor(Math.random() * t.cheers.length)]);
     setJumping(false);
     requestAnimationFrame(() => setJumping(true));
   };
 
   const message = !isToday
-    ? `${delivered} delivered · ${points} pts · RM ${earned} earned`
+    ? t.pastDay(delivered, points, earned)
     : points === 0
-      ? `Let's go! ${POINTS_TARGET} pts = RM ${RM_PER_POINT}, then every point +RM ${RM_PER_POINT} 💪`
+      ? t.letsGo(POINTS_TARGET, RM_PER_POINT)
       : unlocked
         ? earned
-          ? `🎉 RM ${earned} earned! Every extra point = RM ${RM_PER_POINT}`
-          : `🎉 ${POINTS_TARGET} pts! Next point = RM ${RM_PER_POINT}`
+          ? t.unlockedEarned(earned, RM_PER_POINT)
+          : t.unlockedTarget(POINTS_TARGET, RM_PER_POINT)
         : left === 1
-          ? `Just 1 more point to earn RM ${RM_PER_POINT}! 🔥`
-          : `${left} more pts to earn RM ${RM_PER_POINT}`;
+          ? t.oneMore(RM_PER_POINT)
+          : t.moreToGo(left, RM_PER_POINT);
 
   return (
     <section className="card relative overflow-hidden p-4">
@@ -107,12 +110,12 @@ export function CommissionBar({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-            {isToday ? "Today's commission" : "Commission that day"}
+            {isToday ? t.todaysCommission : t.thatDaysCommission}
           </p>
           <p key={message} className="pop-in mt-0.5 text-base font-semibold leading-snug text-slate-900">{message}</p>
         </div>
         <div className="shrink-0 rounded-xl bg-emerald-50 px-3 py-1.5 text-right">
-          <p className="text-[11px] text-emerald-700">Earned</p>
+          <p className="text-[11px] text-emerald-700">{t.earned}</p>
           <p key={earned} className="pop-in text-lg font-bold tabular-nums text-emerald-700">RM {earned}</p>
         </div>
       </div>
@@ -133,14 +136,14 @@ export function CommissionBar({
                 reached ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"
               }`}
               style={{ left: `${((i + 1) / POINTS_TARGET) * 100}%` }}
-              title={`Point ${i + 1}`}
+              title={t.point(i + 1)}
             >
               {reached ? "✓" : i + 1}
             </span>
           );
         })}
         <span className="absolute right-0 top-0 flex items-center gap-1 text-xs font-semibold text-emerald-700" aria-hidden>
-          {unlocked ? `RM ${earned}` : `${POINTS_TARGET} pts`} <span className="text-lg">🏁</span>
+          {unlocked ? `RM ${earned}` : t.pts(POINTS_TARGET)} <span className="text-lg">🏁</span>
         </span>
 
         {/* The lorry */}
@@ -148,7 +151,7 @@ export function CommissionBar({
           type="button"
           onClick={honk}
           onAnimationEnd={() => setJumping(false)}
-          aria-label="Tap the lorry"
+          aria-label={t.tapLorry}
           className="absolute bottom-7 -translate-x-1/2 transition-[left] duration-700 ease-out"
           style={{ left: `${Math.min(Math.max(pct, 6), unlocked ? 78 : 86)}%` }}
         >
@@ -169,17 +172,17 @@ export function CommissionBar({
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
         {/* <span className="rounded-lg bg-slate-50 px-2.5 py-1">✅ {delivered} delivered</span> */}
         <span className="rounded-lg bg-yellow-50 px-2.5 py-1 text-yellow-900">
-          ⭐ {points} pts
-          {missingPoints > 0 && <span className="text-yellow-700/80"> (+{missingPoints} pending)</span>}
+          ⭐ {t.pts(points)}
+          {missingPoints > 0 && <span className="text-yellow-700/80">{t.pendingPts(missingPoints)}</span>}
         </span>
         <button type="button" onClick={() => setShowRules((s) => !s)} className="ml-auto text-xs text-brand-700">
-          {showRules ? "Hide" : "How it works"}
+          {showRules ? t.hide : t.howItWorks}
         </button>
       </div>
       {showRules && (
         <ul className="pop-in mt-2 space-y-1 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-          <li>💰 Collect {POINTS_TARGET} points in a day = RM{RM_PER_POINT}, then every extra point another RM{RM_PER_POINT}!</li>
-          <li>🕐 &ldquo;Pending&rdquo; points are being checked by the office.</li>
+          <li>{t.ruleCommission(POINTS_TARGET, RM_PER_POINT)}</li>
+          <li>{t.rulePending}</li>
         </ul>
       )}
     </section>

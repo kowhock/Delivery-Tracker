@@ -17,11 +17,11 @@ const SO_STYLE: Record<SoStatus, string> = {
 
 const base = "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap";
 
-export function DoBadge({ status }: { status: DoStatus }) {
+export function DoBadge({ status, label }: { status: DoStatus; label?: string }) {
   return (
     <span className={`${base} ${DO_STYLE[status]}`}>
       <span className="size-1.5 rounded-full bg-current opacity-70" />
-      {DO_STATUS_LABEL[status]}
+      {label ?? DO_STATUS_LABEL[status]}
     </span>
   );
 }

@@ -5,9 +5,9 @@ export function todayMY(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TZ });
 }
 
-export function fmtDate(d: string | null | undefined): string {
+export function fmtDate(d: string | null | undefined, locale = "en-MY"): string {
   if (!d) return "—";
-  return new Date(d.length === 10 ? d + "T00:00:00" : d).toLocaleDateString("en-MY", {
+  return new Date(d.length === 10 ? d + "T00:00:00" : d).toLocaleDateString(locale, {
     day: "numeric",
     month: "short",
     year: "numeric",

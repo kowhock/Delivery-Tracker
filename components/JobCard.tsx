@@ -7,10 +7,15 @@ import { DoBadge } from "./StatusBadge";
 import { fmtQty, mapAddress, mapsLinks } from "@/lib/format";
 import { MESSAGES, whatsappLink } from "@/lib/whatsapp";
 import { TIME_SLOTS, type DeliveryOrder } from "@/lib/types";
+import { DICT, type Lang } from "@/lib/i18n";
 
+type Dict = (typeof DICT)[Lang];
+
+// Saved in English (the office reads them); the driver sees them in their language.
 const FAIL_REASONS = ["Customer not available", "Shop closed", "Wrong / unclear address", "Customer rejected goods", "Vehicle problem", "Other"];
 
-export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: string }) {
+export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; driverName: string; lang?: Lang }) {
+  const t = DICT[lang];
   const [mode, setMode] = useState<"idle" | "deliver" | "fail">("idle");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +36,7 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
         await fn();
         setMode("idle");
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Something went wrong");
+        setError(e instanceof Error ? e.message : t.somethingWrong);
       }
     });
 
@@ -43,17 +48,17 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
             <p className="text-xs text-slate-500">
               {job.do_no}{job.so_no && ` · ${job.so_no}`}
               <span className="ml-1.5 rounded bg-yellow-50 px-1.5 font-medium text-yellow-800">
-                ⭐ {job.points == null ? "pts pending" : `${job.points} pts`}
+                ⭐ {job.points == null ? t.ptsPending : t.pts(job.points)}
               </span>
             </p>
             <h2 className="text-lg font-semibold leading-tight">{job.customer_name}</h2>
           </div>
-          <DoBadge status={job.status} />
+          <DoBadge status={job.status} label={t.status[job.status]} />
         </div>
 
         {address && <p className="text-sm text-slate-600">{address}</p>}
         {job.map_address && job.address && <p className="text-xs text-slate-400">AutoCount: {job.address}</p>}
-        {job.time_slot && <p className="text-sm font-medium text-sky-700">🕒 Estimated {TIME_SLOTS[job.time_slot]}</p>}
+        {job.time_slot && <p className="text-sm font-medium text-sky-700">🕒 {t.estimated(TIME_SLOTS[job.time_slot])}</p>}
         {job.instructions && <p className="rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-900">📋 {job.instructions}</p>}
         {job.remarks && <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">📝 {job.remarks}</p>}
 
@@ -61,12 +66,12 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
           <div className="grid grid-cols-3 gap-2">
             {maps && <a href={maps.waze} className="btn-secondary px-2">Waze</a>}
             {maps && <a href={maps.google} className="btn-secondary px-2">Maps</a>}
-            {job.contact_phone && <a href={`tel:${job.contact_phone}`} className="btn-secondary px-2">Call</a>}
+            {job.contact_phone && <a href={`tel:${job.contact_phone}`} className="btn-secondary px-2">{t.call}</a>}
           </div>
         )}
 
         {(job.do_items?.length ?? 0) > 0 && <details className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
-          <summary className="cursor-pointer font-medium text-slate-700">{job.do_items?.length ?? 0} items</summary>
+          <summary className="cursor-pointer font-medium text-slate-700">{t.items(job.do_items?.length ?? 0)}</summary>
           <ul className="mt-2 space-y-1">
             {job.do_items?.map((i) => (
               <li key={i.id} className="flex justify-between gap-3">
@@ -78,7 +83,7 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
         </details>}
 
         {job.failed_reason && job.status === "failed" && (
-          <p className="text-sm text-rose-600">Failed: {job.failed_reason}</p>
+          <p className="text-sm text-rose-600">{t.failed(t.failReasons[job.failed_reason] ?? job.failed_reason)}</p>
         )}
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
@@ -87,75 +92,75 @@ export function JobCard({ job, driverName }: { job: DeliveryOrder; driverName: s
       <div className="border-t border-slate-100 bg-slate-50/60 p-3">
         {job.status === "assigned" && (
           <button disabled={pending} onClick={() => run(() => startDelivery(job.id))} className="btn-primary w-full py-3">
-            {pending ? "…" : "Start delivery"}
+            {pending ? "…" : t.startDelivery}
           </button>
         )}
 
         {job.status === "out_for_delivery" && mode === "idle" && (
           <div className="space-y-2">
             {waOnTheWay && (
-              <a href={waOnTheWay} target="_blank" className="btn-whatsapp w-full">Tell customer I&apos;m on the way</a>
+              <a href={waOnTheWay} target="_blank" className="btn-whatsapp w-full">{t.onTheWay}</a>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMode("fail")} className="btn-secondary py-3 text-rose-600">Can&apos;t deliver</button>
-              <button onClick={() => setMode("deliver")} className="btn-primary py-3">Delivered</button>
+              <button onClick={() => setMode("fail")} className="btn-secondary py-3 text-rose-600">{t.cantDeliver}</button>
+              <button onClick={() => setMode("deliver")} className="btn-primary py-3">{t.delivered}</button>
             </div>
           </div>
         )}
 
-        {mode === "deliver" && <DeliverForm pending={pending} onCancel={() => setMode("idle")} onSubmit={(file, note) =>
+        {mode === "deliver" && <DeliverForm t={t} pending={pending} onCancel={() => setMode("idle")} onSubmit={(file, note) =>
           run(async () => {
             const path = file ? await uploadPhoto(job.id, file) : null;
             await markDelivered(job.id, path, note);
           })} />}
 
-        {mode === "fail" && <FailForm pending={pending} onCancel={() => setMode("idle")} onSubmit={(reason) => run(() => markFailed(job.id, reason))} />}
+        {mode === "fail" && <FailForm t={t} pending={pending} onCancel={() => setMode("idle")} onSubmit={(reason) => run(() => markFailed(job.id, reason))} />}
 
         {finished && (
           waDelivered
-            ? <a href={waDelivered} target="_blank" className="btn-whatsapp w-full">Send &ldquo;delivered&rdquo; WhatsApp</a>
-            : <p className="text-center text-sm text-emerald-700">✓ Delivered</p>
+            ? <a href={waDelivered} target="_blank" className="btn-whatsapp w-full">{t.sendDelivered}</a>
+            : <p className="text-center text-sm text-emerald-700">{t.deliveredDone}</p>
         )}
 
         {job.status === "failed" && (
-          <p className="text-center text-xs text-slate-500">The office will reschedule this delivery.</p>
+          <p className="text-center text-xs text-slate-500">{t.willReschedule}</p>
         )}
       </div>
     </article>
   );
 }
 
-function DeliverForm({ pending, onCancel, onSubmit }: { pending: boolean; onCancel: () => void; onSubmit: (f: File | null, note: string) => void }) {
+function DeliverForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boolean; onCancel: () => void; onSubmit: (f: File | null, note: string) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [note, setNote] = useState("");
   return (
     <div className="space-y-3">
       <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
-        📷 {file ? file.name : "Take photo of signed DO / goods"}
+        📷 {file ? file.name : t.takePhoto}
         <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
       </label>
-      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Received by / note (optional)" className="input" />
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.receivedBy} className="input" />
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={onCancel} className="btn-secondary">Cancel</button>
-        <button disabled={pending} onClick={() => onSubmit(file, note)} className="btn-primary">{pending ? "Saving…" : "Confirm"}</button>
+        <button onClick={onCancel} className="btn-secondary">{t.cancel}</button>
+        <button disabled={pending} onClick={() => onSubmit(file, note)} className="btn-primary">{pending ? t.saving : t.confirm}</button>
       </div>
     </div>
   );
 }
 
-function FailForm({ pending, onCancel, onSubmit }: { pending: boolean; onCancel: () => void; onSubmit: (reason: string) => void }) {
+function FailForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boolean; onCancel: () => void; onSubmit: (reason: string) => void }) {
   const [reason, setReason] = useState(FAIL_REASONS[0]);
   const [other, setOther] = useState("");
   return (
     <div className="space-y-3">
       <select value={reason} onChange={(e) => setReason(e.target.value)} className="input">
-        {FAIL_REASONS.map((r) => <option key={r}>{r}</option>)}
+        {FAIL_REASONS.map((r) => <option key={r} value={r}>{t.failReasons[r] ?? r}</option>)}
       </select>
-      {reason === "Other" && <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="What happened?" className="input" />}
+      {reason === "Other" && <input value={other} onChange={(e) => setOther(e.target.value)} placeholder={t.whatHappened} className="input" />}
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={onCancel} className="btn-secondary">Cancel</button>
+        <button onClick={onCancel} className="btn-secondary">{t.cancel}</button>
         <button disabled={pending} onClick={() => onSubmit(reason === "Other" ? other || "Other" : reason)} className="btn bg-rose-600 text-white hover:bg-rose-700">
-          {pending ? "Saving…" : "Mark failed"}
+          {pending ? t.saving : t.markFailed}
         </button>
       </div>
     </div>
