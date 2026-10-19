@@ -5,6 +5,7 @@ import { addDays, dateRange, mapAddress, todayMY } from "@/lib/format";
 import { commissionForDay, withTripPoints } from "@/lib/commission";
 import { lorryLabel, type Lorry, type Profile } from "@/lib/types";
 import { TripForm, type TripDay } from "@/components/TripForm";
+import { BranchDriverPicker } from "@/components/BranchDriverPicker";
 
 const MAX_DAYS = 31; // the monthly form has 31 rows
 
@@ -88,6 +89,8 @@ export default async function TripFormPage({
           timeIn: timeOf(started.get(d.id)),
           timeBack: timeOf(d.delivered_at),
           points: d.points,
+          manual: d.points_manual && d.points != null,
+          original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
         })),
       };
     });
@@ -105,14 +108,15 @@ export default async function TripFormPage({
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2">
-          <select name="driver" defaultValue={driver?.id} className="input w-auto">
-            {drivers.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.full_name}
-                {!locked && d.branch ? ` (${branchName(d.branch)})` : ""}
-              </option>
-            ))}
-          </select>
+          {locked ? (
+            <select name="driver" defaultValue={driver?.id} aria-label="Driver" className="input w-auto">
+              {drivers.map((d) => (
+                <option key={d.id} value={d.id}>{d.full_name}</option>
+              ))}
+            </select>
+          ) : (
+            <BranchDriverPicker drivers={drivers} driverId={driver?.id} />
+          )}
           <label className="flex items-center gap-1.5 text-sm text-slate-500">
             From <input type="date" name="from" defaultValue={from} className="input w-auto" />
           </label>

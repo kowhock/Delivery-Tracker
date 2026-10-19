@@ -12,7 +12,9 @@ const BOXES = 12; // DO boxes on one daily form page (2 columns × 6)
 const SIGNATURES = ["PREPARED BY", "BRANCH MANAGER", "CONFIRM BY", "APPROVED BY"];
 const CHECKS = ["HYDRAULIC OIL", "ENGINE OIL", "WATER LEVEL", "TYRE"];
 
-export type TripDo = { id: string; doNo: string; location: string; timeIn: string; timeBack: string; points: number | null };
+export type TripDo = { id: string; doNo: string; location: string; timeIn: string; timeBack: string; points: number | null; manual: boolean;
+  /** AutoCount address, set only when the office changed the delivery address used for points (`location` is the new one). */
+  original: string };
 export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
 
 type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[] };
@@ -94,7 +96,8 @@ const head = `${cell} text-left font-bold uppercase`;
 
 function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay; rows: (TripDo | undefined)[][] }) {
   return (
-    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:max-w-none print:p-0 print:shadow-none">
+    // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
+    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
       <div className="flex gap-4">
         <div className="w-[38%] space-y-4">
           <h2 className="text-base font-bold underline">DELIVERY TRIP TRACKING</h2>
@@ -148,10 +151,10 @@ function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay;
         </colgroup>
         {rows.map((pair, r) => (
           <tbody key={r}>
-            {(["DO NO.", "LOCATION", "TIME IN", "TIME BACK"] as const).map((label, k) => (
-              <tr key={label}>
+            {FIELDS.map((f, k) => (
+              <tr key={f}>
                 {pair.map((x, side) => (
-                  <DoBoxRow key={side} label={label} row={k} x={x} />
+                  <DoBoxRow key={side} field={f} row={k} x={x} />
                 ))}
               </tr>
             ))}
@@ -162,16 +165,39 @@ function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay;
   );
 }
 
-function DoBoxRow({ label, row, x }: { label: string; row: number; x?: TripDo }) {
-  const value = [x?.doNo, x?.location, x?.timeIn, x?.timeBack][row] ?? "";
+const LABELS = { doNo: "DO NO.", location: "LOCATION", timeIn: "TIME IN", timeBack: "TIME BACK" } as const;
+type Field = keyof typeof LABELS;
+const FIELDS = Object.keys(LABELS) as Field[];
+
+function DoBoxRow({ field, row, x }: { field: Field; row: number; x?: TripDo }) {
+  const value = x?.[field] ?? "";
   return (
     <>
-      <th className={`${head} h-6 text-[10px]`}>{label}</th>
-      <td className={`${cell} truncate ${row === 0 ? "font-semibold" : ""}`} title={value}>{value}</td>
+      <th className={`${head} h-8 text-[10px] print:h-[8.5mm] print:text-[11px]`}>{LABELS[field]}</th>
+      {field === "location" && x?.original ? (
+        // Address changed by the office: the AutoCount one on top, the one used for points below.
+        <td className={`${cell} py-0.5 leading-tight`} title={`Original: ${x.original}\nUpdated: ${value}`}>
+          <div className="truncate text-[9px] text-slate-500 print:text-[10px]">{x.original}</div>
+          <div className="line-clamp-2 break-words">{value}</div>
+        </td>
+      ) : field === "location" ? (
+        // Long addresses wrap onto a second line (cut off after that) instead of being cut at one.
+        <td className={`${cell} py-0.5 leading-tight`} title={value}>
+          <div className="line-clamp-2 break-words">{value}</div>
+        </td>
+      ) : (
+        <td className={`${cell} truncate ${row === 0 ? "font-semibold" : ""}`} title={value}>{value}</td>
+      )}
       {row === 0 ? (
         <th className={`${head} text-center text-[10px]`}>Remark</th>
       ) : row === 1 ? (
-        <td rowSpan={3} className={`${cell} text-center text-lg font-semibold`}>{x?.points ?? ""}</td>
+        <td
+          rowSpan={3}
+          className={`${cell} text-center text-xl font-semibold ${x?.manual ? "bg-blue-100 print:bg-blue-100" : ""}`}
+          title={x?.manual ? "Points keyed in by staff" : undefined}
+        >
+          {x?.points ?? ""}
+        </td>
       ) : null}
     </>
   );
@@ -181,6 +207,8 @@ function MonthlyPage({
   branch, driver, lorry, from, to, days, driverId, remarks, setRemarks,
 }: Props & { remarks: Record<string, string>; setRemarks: (f: (r: Record<string, string>) => Record<string, string>) => void }) {
   const rows = Array.from({ length: ROWS }, (_, i) => days[i]);
+  // Tighter rows than the daily form so all 31 days + signatures fit on one A4 page.
+  const cell = "border border-black px-1.5 py-0.5 leading-tight";
   return (
     <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-6 text-[12px] text-black shadow print:max-w-none print:p-0 print:shadow-none">
       <div className="flex items-center gap-3">
@@ -235,7 +263,7 @@ function MonthlyPage({
                   <input
                     value={remarks[x.date] ?? ""}
                     onChange={(e) => setRemarks((r) => ({ ...r, [x.date]: e.target.value.toUpperCase() }))}
-                    className="w-full bg-transparent py-1 text-center outline-none focus:bg-brand-50 print:focus:bg-transparent"
+                    className="w-full bg-transparent py-0.5 leading-tight text-center outline-none focus:bg-brand-50 print:focus:bg-transparent"
                     aria-label={`Remark for ${slashed(x.date)}`}
                   />
                 )}
@@ -251,7 +279,7 @@ function MonthlyPage({
         </tbody>
       </table>
 
-      <div className="mt-14 grid grid-cols-4 gap-6 text-center">
+      <div className="mt-10 grid grid-cols-4 gap-6 text-center">
         {SIGNATURES.map((s) => (
           <span key={s} className="border-t border-black pt-1">{s}</span>
         ))}
@@ -265,6 +293,7 @@ function MonthlyPage({
 const thin = { style: "thin" as const };
 const border = { top: thin, left: thin, bottom: thin, right: thin };
 const grey = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFD9D9D9" } };
+const lightBlue = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFDBEAFE" } }; // points keyed in by staff
 
 /** Writes a value with a border; `merge` = "B3:C3" style range starting at `at`. */
 function put(ws: Worksheet, at: string, value: string | number | null, opts: { bold?: boolean; merge?: string; center?: boolean; fill?: boolean; noBorder?: boolean; size?: number } = {}) {
@@ -287,8 +316,8 @@ function put(ws: Worksheet, at: string, value: string | number | null, opts: { b
   }
 }
 
-function setupPage(ws: Worksheet) {
-  ws.pageSetup = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
+function setupPage(ws: Worksheet, onePage = false) {
+  ws.pageSetup = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: onePage ? 1 : 0, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
 }
 
 function dailySheet(wb: Workbook, p: Props) {
@@ -325,28 +354,28 @@ function dailySheet(wb: Workbook, p: Props) {
 
     let r = 11;
     for (const pair of rows) {
+      const last = r + FIELDS.length - 1;
       pair.forEach((x, side) => {
         const [L, V, R] = side ? ["D", "E", "F"] : ["A", "B", "C"];
-        put(ws, `${L}${r}`, "DO NO.", { bold: true });
-        put(ws, `${V}${r}`, x?.doNo ?? "", { bold: true });
+        FIELDS.forEach((f, k) => {
+          put(ws, `${L}${r + k}`, LABELS[f], { bold: true });
+          put(ws, `${V}${r + k}`, f === "location" && x?.original ? `Original: ${x.original}\nUpdated: ${x.location}` : x?.[f] ?? "", { bold: k === 0 });
+        });
         put(ws, `${R}${r}`, "REMARK", { bold: true, center: true });
-        put(ws, `${L}${r + 1}`, "LOCATION", { bold: true });
-        put(ws, `${V}${r + 1}`, x?.location ?? "");
-        put(ws, `${L}${r + 2}`, "TIME IN", { bold: true });
-        put(ws, `${V}${r + 2}`, x?.timeIn ?? "");
-        put(ws, `${L}${r + 3}`, "TIME BACK", { bold: true });
-        put(ws, `${V}${r + 3}`, x?.timeBack ?? "");
-        put(ws, `${R}${r + 1}`, x?.points ?? "", { merge: `${R}${r + 1}:${R}${r + 3}`, center: true, bold: true, size: 14 });
+        put(ws, `${R}${r + 1}`, x?.points ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14 });
+        if (x?.manual) for (let k = r + 1; k <= last; k++) ws.getCell(`${R}${k}`).fill = lightBlue;
       });
-      for (let k = 0; k < 4; k++) ws.getRow(r + k).height = 20;
-      r += 4;
+      // The location line fits two lines of text, or four when it shows the original and updated address.
+      const changed = pair.some((x) => x?.original);
+      FIELDS.forEach((f, k) => (ws.getRow(r + k).height = f === "location" ? (changed ? 52 : 28) : 20));
+      r += FIELDS.length;
     }
   });
 }
 
 function monthlySheet(wb: Workbook, p: Props, remarks: Record<string, string>) {
   const ws = wb.addWorksheet("Monthly");
-  setupPage(ws);
+  setupPage(ws, true);
   ws.columns = [7, 16, 16, 16, 34].map((width) => ({ width }));
 
   put(ws, "A1", COMPANY_ZH, { bold: true, merge: "A1:E1", noBorder: true, size: 14 });
@@ -369,6 +398,7 @@ function monthlySheet(wb: Workbook, p: Props, remarks: Record<string, string>) {
     put(ws, `D${r}`, x?.rm ?? 0, { center: true, fill: shade });
     put(ws, `E${r}`, x ? remarks[x.date] ?? "" : "", { center: true, fill: shade });
     ws.getCell(`D${r}`).numFmt = '"RM"#,##0.00';
+    ws.getRow(r).height = 16;
   }
   const t = 8 + ROWS;
   put(ws, `A${t}`, "TOTAL", { bold: true, merge: `A${t}:B${t}`, center: true });
