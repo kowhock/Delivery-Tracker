@@ -47,16 +47,16 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
           <div>
             <p className="text-xs text-slate-500">
               {job.do_no}{job.so_no && ` · ${job.so_no}`}
-              <span className="ml-1.5 rounded bg-yellow-50 px-1.5 font-medium text-yellow-800">
+              <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
                 ⭐ {job.points == null ? t.ptsPending : t.pts(job.points)}
               </span>
             </p>
-            <h2 className="text-lg font-semibold leading-tight">{job.customer_name}</h2>
+            <h2 className="text-lg font-semibold leading-tight text-slate-900">{job.customer_name}</h2>
           </div>
           <DoBadge status={job.status} label={t.status[job.status]} />
         </div>
 
-        {address && <p className="text-sm text-slate-600">{address}</p>}
+        {address && <p className="text-sm text-slate-700">{address}</p>}
         {job.map_address && job.address && <p className="text-xs text-slate-400">AutoCount: {job.address}</p>}
         {job.time_slot && <p className="text-sm font-medium text-sky-700">🕒 {t.estimated(TIME_SLOTS[job.time_slot])}</p>}
         {job.instructions && <p className="rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-900">📋 {job.instructions}</p>}
@@ -64,9 +64,9 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
 
         {!finished && (
           <div className="grid grid-cols-3 gap-2">
-            {maps && <a href={maps.waze} className="btn-secondary px-2">Waze</a>}
-            {maps && <a href={maps.google} className="btn-secondary px-2">Maps</a>}
-            {job.contact_phone && <a href={`tel:${job.contact_phone}`} className="btn-secondary px-2">{t.call}</a>}
+            {maps && <a href={maps.waze} className="btn-neutral px-2">Waze</a>}
+            {maps && <a href={maps.google} className="btn-neutral px-2">Maps</a>}
+            {job.contact_phone && <a href={`tel:${job.contact_phone}`} className="btn-neutral px-2">{t.call}</a>}
           </div>
         )}
 
@@ -89,9 +89,9 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
       </div>
 
       {/* Actions */}
-      <div className="border-t border-slate-100 bg-slate-50/60 p-3">
+      <div className="border-t border-slate-100 p-3">
         {job.status === "assigned" && (
-          <button disabled={pending} onClick={() => run(() => startDelivery(job.id))} className="btn-primary w-full py-3">
+          <button disabled={pending} onClick={() => run(() => startDelivery(job.id))} className="btn-kh w-full py-3.5 text-base">
             {pending ? "…" : t.startDelivery}
           </button>
         )}
@@ -102,8 +102,8 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
               <a href={waOnTheWay} target="_blank" className="btn-whatsapp w-full">{t.onTheWay}</a>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setMode("fail")} className="btn-secondary py-3 text-rose-600">{t.cantDeliver}</button>
-              <button onClick={() => setMode("deliver")} className="btn-primary py-3">{t.delivered}</button>
+              <button onClick={() => setMode("fail")} className="btn-neutral py-3 text-rose-600">{t.cantDeliver}</button>
+              <button onClick={() => setMode("deliver")} className="btn-kh py-3">{t.delivered}</button>
             </div>
           </div>
         )}
@@ -141,8 +141,8 @@ function DeliverForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boo
       </label>
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.receivedBy} className="input" />
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={onCancel} className="btn-secondary">{t.cancel}</button>
-        <button disabled={pending} onClick={() => onSubmit(file, note)} className="btn-primary">{pending ? t.saving : t.confirm}</button>
+        <button onClick={onCancel} className="btn-neutral">{t.cancel}</button>
+        <button disabled={pending} onClick={() => onSubmit(file, note)} className="btn-kh">{pending ? t.saving : t.confirm}</button>
       </div>
     </div>
   );
@@ -158,7 +158,7 @@ function FailForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boolea
       </select>
       {reason === "Other" && <input value={other} onChange={(e) => setOther(e.target.value)} placeholder={t.whatHappened} className="input" />}
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={onCancel} className="btn-secondary">{t.cancel}</button>
+        <button onClick={onCancel} className="btn-neutral">{t.cancel}</button>
         <button disabled={pending} onClick={() => onSubmit(reason === "Other" ? other || "Other" : reason)} className="btn bg-rose-600 text-white hover:bg-rose-700">
           {pending ? t.saving : t.markFailed}
         </button>

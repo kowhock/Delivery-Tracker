@@ -8,6 +8,9 @@
   --color-brand-600: #1a56d6;
   --color-brand-700: #0041c2;
   --color-brand-800: #00349b;
+  /* Kow Hock company yellow (the lorries) — driver app main actions, progress and points. */
+  --color-kh-yellow: #fec32f;
+  --color-kh-yellow-dark: #e5a90f;
 }
 
 @utility card {
@@ -22,6 +25,14 @@
 }
 @utility btn-secondary {
   @apply btn border border-slate-200 bg-white text-slate-700 hover:bg-slate-50;
+}
+/* Driver app: the main action on a job (Start delivery, Delivered, Confirm). */
+@utility btn-kh {
+  @apply btn bg-kh-yellow text-black hover:bg-kh-yellow-dark;
+}
+/* Driver app: neutral secondary actions (Waze, Maps, Call, Cancel). */
+@utility btn-neutral {
+  @apply btn bg-slate-100 text-slate-800 hover:bg-slate-200;
 }
 @utility btn-whatsapp {
   @apply btn bg-[#25D366] text-white hover:bg-[#1ebe5a];

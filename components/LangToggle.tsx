@@ -18,7 +18,7 @@ export function LangToggle({ lang }: { lang: Lang }) {
           type="button"
           onClick={() => pick(l)}
           aria-pressed={lang === l}
-          className={`px-2.5 py-1 ${lang === l ? "bg-white text-brand-700" : "text-white/80"}`}
+          className={`px-2.5 py-1 ${lang === l ? "bg-white text-black" : "text-white/80"}`}
         >
           {l === "en" ? "EN" : "BM"}
         </button>

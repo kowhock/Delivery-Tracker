@@ -92,7 +92,7 @@ export function CommissionBar({
           : t.moreToGo(left, RM_PER_POINT);
 
   return (
-    <section className="card relative overflow-hidden p-4">
+    <section className="card relative overflow-hidden p-3">
       {party && (
         <div className="pointer-events-none absolute inset-0 z-10" aria-hidden>
           {confetti.map((c, i) => (
@@ -112,19 +112,19 @@ export function CommissionBar({
           <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
             {isToday ? t.todaysCommission : t.thatDaysCommission}
           </p>
-          <p key={message} className="pop-in mt-0.5 text-base font-semibold leading-snug text-slate-900">{message}</p>
+          <p key={message} className="pop-in mt-0.5 text-sm font-semibold leading-snug text-slate-900">{message}</p>
         </div>
-        <div className="shrink-0 rounded-xl bg-emerald-50 px-3 py-1.5 text-right">
+        <div className="shrink-0 rounded-xl bg-emerald-50 px-2.5 py-1 text-right">
           <p className="text-[11px] text-emerald-700">{t.earned}</p>
-          <p key={earned} className="pop-in text-lg font-bold tabular-nums text-emerald-700">RM {earned}</p>
+          <p key={earned} className="pop-in text-base font-bold tabular-nums text-emerald-700">RM {earned}</p>
         </div>
       </div>
 
       {/* The road */}
-      <div className="relative mt-3 h-16 select-none">
+      <div className="relative mt-2 h-14 select-none">
         <div className="absolute inset-x-0 bottom-3 h-3 rounded-full bg-slate-100" />
         <div
-          className="absolute bottom-3 left-0 h-3 rounded-full bg-gradient-to-r from-amber-400 to-emerald-500 transition-[width] duration-700 ease-out"
+          className="absolute bottom-3 left-0 h-3 rounded-full bg-kh-yellow transition-[width] duration-700 ease-out"
           style={{ width: `${pct}%` }}
         />
         {Array.from({ length: POINTS_TARGET }, (_, i) => {
@@ -133,7 +133,7 @@ export function CommissionBar({
             <span
               key={i}
               className={`absolute bottom-2 grid size-5 -translate-x-1/2 place-items-center rounded-full text-[10px] font-bold ring-2 ring-white transition-colors ${
-                reached ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"
+                reached ? "bg-kh-yellow text-black" : "bg-slate-200 text-slate-500"
               }`}
               style={{ left: `${((i + 1) / POINTS_TARGET) * 100}%` }}
               title={t.point(i + 1)}
@@ -169,13 +169,13 @@ export function CommissionBar({
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
         {/* <span className="rounded-lg bg-slate-50 px-2.5 py-1">✅ {delivered} delivered</span> */}
-        <span className="rounded-lg bg-yellow-50 px-2.5 py-1 text-yellow-900">
+        <span className="rounded-lg bg-kh-yellow/25 px-2.5 py-1 text-slate-900">
           ⭐ {t.pts(points)}
-          {missingPoints > 0 && <span className="text-yellow-700/80">{t.pendingPts(missingPoints)}</span>}
+          {missingPoints > 0 && <span className="text-slate-600">{t.pendingPts(missingPoints)}</span>}
         </span>
-        <button type="button" onClick={() => setShowRules((s) => !s)} className="ml-auto text-xs text-brand-700">
+        <button type="button" onClick={() => setShowRules((s) => !s)} className="ml-auto text-xs font-medium text-slate-700 underline underline-offset-2">
           {showRules ? t.hide : t.howItWorks}
         </button>
       </div>
@@ -192,10 +192,10 @@ export function CommissionBar({
 /** A small, friendly lorry facing right. */
 function Lorry({ moving }: { moving: boolean }) {
   return (
-    <svg width="46" height="30" viewBox="0 0 46 30" aria-hidden>
+    <svg width="40" height="26" viewBox="0 0 46 30" aria-hidden>
       <rect x="1" y="4" width="27" height="17" rx="3" className="fill-amber-400" />
       <rect x="4" y="7" width="21" height="3" rx="1.5" className="fill-amber-300" />
-      <path d="M28 9h8.5c1 0 1.9.5 2.4 1.3l3.6 5.4c.3.5.5 1 .5 1.6V21H28z" className="fill-brand-600" />
+      <path d="M28 9h8.5c1 0 1.9.5 2.4 1.3l3.6 5.4c.3.5.5 1 .5 1.6V21H28z" className="fill-slate-900" />
       <path d="M30.5 11.5h5.6l2.8 4.2h-8.4z" className="fill-sky-100" />
       <circle cx="33.5" cy="17.6" r=".9" className="fill-slate-800" />
       <path d="M36 19.2c.6.4 1.4.4 2 0" stroke="#1e293b" strokeWidth=".8" fill="none" strokeLinecap="round" />

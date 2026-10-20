@@ -27,6 +27,8 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
   const lang = toLang((await cookies()).get(LANG_COOKIE)?.value);
   const t = DICT[lang];
   const day_ = (d: string) => fmtDate(d, t.locale);
+  // Header only: "20 Oct", no year.
+  const dayMonth = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString(t.locale, { day: "numeric", month: "short", timeZone: "UTC" });
 
   // Commission counts what this driver delivered on the day (by delivery time).
   const dayEnd = new Date(date + "T00:00:00+08:00");
@@ -61,14 +63,17 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
   }
 
   return (
-    <div className="mx-auto min-h-dvh max-w-lg pb-10">
-      <header className="sticky top-0 z-10 bg-brand-700 px-4 pb-5 pt-4 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-white/70">{t.hi(profile.full_name)}</p>
-            <h1 className="text-xl font-semibold">{isToday ? `${t.today} · ${day_(date)}` : day_(date)}</h1>
+    <div className="mx-auto min-h-dvh max-w-lg bg-white pb-10">
+      <header className="sticky top-0 z-10 bg-black px-4 pb-5 pt-4 text-white">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <img src="/kowhock-logo.png" alt="Kow Hock" width={400} height={278} className="h-12 w-auto shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm text-white/70">{t.hi(profile.full_name)}</p>
+              <h1 className="truncate text-lg font-semibold">{isToday ? `${t.today} · ${dayMonth(date)}` : dayMonth(date)}</h1>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex shrink-0 items-center gap-3 text-sm">
             <LangToggle lang={lang} />
             {profile.role !== "driver" && <Link href="/deliveries" className="text-white/80">{t.back}</Link>}
             <form action={signOut}><button className="text-white/80">{t.signOut}</button></form>
@@ -86,14 +91,14 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
             <button className="rounded-lg bg-white/15 px-3 py-1.5">{t.go}</button>
           </form>
           <Link href={`/driver?date=${shiftDate(date, 1)}`} className="rounded-lg bg-white/15 px-3 py-1.5" aria-label={t.nextDay}>›</Link>
-          {!isToday && <Link href="/driver" className="rounded-lg bg-white px-3 py-1.5 font-medium text-brand-700">{t.today}</Link>}
+          {!isToday && <Link href="/driver" className="rounded-lg bg-kh-yellow px-3 py-1.5 font-medium text-black">{t.today}</Link>}
         </div>
         <div className="mt-4">
           <div className="flex justify-between text-sm">
             <span>{t.doneOf(done, jobs.length)}</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/20">
-            <div className="h-full rounded-full bg-white transition-all" style={{ width: `${jobs.length ? (done / jobs.length) * 100 : 0}%` }} />
+            <div className="h-full rounded-full bg-kh-yellow transition-all" style={{ width: `${jobs.length ? (done / jobs.length) * 100 : 0}%` }} />
           </div>
         </div>
       </header>
