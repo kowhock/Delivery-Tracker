@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { driverLabel, fmtDate, mapAddress, todayMY } from "@/lib/format";
+import { driverLabel, fmtDate, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
@@ -124,6 +124,8 @@ export default async function DeliveriesPage({
   };
 
   const isToday = from === today && to === today;
+  const [weekFrom, weekTo] = weekRange(today);
+  const isThisWeek = from === weekFrom && to === weekTo;
   const isAllDates = !from && !to;
   // Filters that stay on while staff change other ones.
   const keep = {
@@ -139,9 +141,11 @@ export default async function DeliveriesPage({
     ? `DO no. matching "${term}" · all dates`
     : isToday
       ? `Today, ${fmtDate(today)}`
-      : isAllDates
-        ? "All dates"
-        : `${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}`;
+      : isThisWeek
+        ? `This week, ${fmtDate(weekFrom)} – ${fmtDate(weekTo)}`
+        : isAllDates
+          ? "All dates"
+          : `${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}`;
   const branchLabel =
     term && !locked ? "" : !branch ? "All branches · " : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
 
@@ -197,6 +201,9 @@ export default async function DeliveriesPage({
         <div className={`flex flex-wrap items-center gap-2 ${term ? "opacity-50" : ""}`}>
           <nav className="flex rounded-lg bg-slate-100 p-0.5">
             <Link href={href(keep)} className={`${TAB} ${isToday && !term ? TAB_ON : TAB_OFF}`}>Today</Link>
+            <Link href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek && !term ? TAB_ON : TAB_OFF}`}>
+              This week
+            </Link>
             <Link href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates && !term ? TAB_ON : TAB_OFF}`}>
               All dates
             </Link>

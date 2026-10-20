@@ -5,6 +5,15 @@ export function todayMY(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: TZ });
 }
 
+/** Monday and Sunday (YYYY-MM-DD) of the week containing `day`. */
+export function weekRange(day: string): [string, string] {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  const mon = d.toISOString().slice(0, 10);
+  d.setUTCDate(d.getUTCDate() + 6);
+  return [mon, d.toISOString().slice(0, 10)];
+}
+
 export function fmtDate(d: string | null | undefined, locale = "en-MY"): string {
   if (!d) return "—";
   return new Date(d.length === 10 ? d + "T00:00:00" : d).toLocaleDateString(locale, {

@@ -64,3 +64,8 @@
   .trip-page { break-after: page }
   .trip-page:last-child { break-after: auto }
 }
+
+/* ---------- Login PIN: shake on a wrong PIN ---------- */
+@keyframes pin-shake { 0%, 100% { transform: translateX(0) } 20%, 60% { transform: translateX(-8px) } 40%, 80% { transform: translateX(8px) } }
+.pin-shake { animation: pin-shake .4s ease-in-out }
+@media (prefers-reduced-motion: reduce) { .pin-shake { animation: none } }
