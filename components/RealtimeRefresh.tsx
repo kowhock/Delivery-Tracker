@@ -10,8 +10,10 @@ const WAIT_MS = 1000;
 /**
  * Re-renders the page whenever a row in `table` changes (e.g. a driver marks a job delivered).
  * `filter` limits it to matching rows, e.g. "branch=eq.GP". Background tabs refresh once when shown again.
+ * `everyMs` also refreshes on a timer and whenever the page is shown again — for phones, whose live
+ * connection drops while the screen is off, and for changes live updates can't see (a DO moved to another driver).
  */
-export function RealtimeRefresh({ table, filter }: { table: string; filter?: string }) {
+export function RealtimeRefresh({ table, filter, everyMs }: { table: string; filter?: string; everyMs?: number }) {
   const router = useRouter();
   useEffect(() => {
     const supabase = createClient();
@@ -23,7 +25,7 @@ export function RealtimeRefresh({ table, filter }: { table: string; filter?: str
       else router.refresh();
     };
     const onShow = () => {
-      if (!document.hidden && missed) {
+      if (!document.hidden && (missed || everyMs)) {
         missed = false;
         router.refresh();
       }
@@ -37,11 +39,13 @@ export function RealtimeRefresh({ table, filter }: { table: string; filter?: str
       })
       .subscribe();
     document.addEventListener("visibilitychange", onShow);
+    const tick = everyMs ? setInterval(() => !document.hidden && router.refresh(), everyMs) : undefined;
     return () => {
+      clearInterval(tick);
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onShow);
       supabase.removeChannel(channel);
     };
-  }, [table, filter, router]);
+  }, [table, filter, everyMs, router]);
   return null;
 }

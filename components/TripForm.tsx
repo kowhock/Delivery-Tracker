@@ -212,10 +212,7 @@ function MonthlyPage({
   return (
     <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-6 text-[12px] text-black shadow print:max-w-none print:p-0 print:shadow-none">
       <div className="flex items-center gap-3">
-        <div className="flex flex-col items-center bg-black px-2 py-1 font-bold leading-tight text-white">
-          <span className="text-lg tracking-[0.3em]">KH</span>
-          <span className="text-[10px]">KOW HOCK</span>
-        </div>
+        <img src="/kowhock-logo-full.png" alt="Kow Hock" width={500} height={387} className="h-16 w-auto shrink-0" />
         <div>
           <p className="text-base font-bold">{COMPANY_ZH}</p>
           <p className="font-bold">{COMPANY_EN}</p>

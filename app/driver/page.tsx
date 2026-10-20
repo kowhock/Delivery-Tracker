@@ -9,6 +9,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { DICT, LANG_COOKIE, toLang } from "@/lib/i18n";
 import { LangToggle } from "@/components/LangToggle";
+import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 
 /** YYYY-MM-DD moved by `days`. */
 function shiftDate(d: string, days: number): string {
@@ -64,6 +65,8 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto min-h-dvh max-w-lg bg-white pb-10">
+      {/* The office may add, move or re-order this driver's DOs at any time. */}
+      <RealtimeRefresh table="delivery_orders" filter={`driver_id=eq.${user.id}`} everyMs={60_000} />
       <header className="sticky top-0 z-10 bg-black px-4 pb-5 pt-4 text-white">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
