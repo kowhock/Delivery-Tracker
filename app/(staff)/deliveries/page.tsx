@@ -8,6 +8,7 @@ import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { BranchTags, SoLinks } from "@/components/DocLinks";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
+import { NavForm, NavLink, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
   pending: "bg-slate-400",
@@ -150,6 +151,7 @@ export default async function DeliveriesPage({
     term && !locked ? "" : !branch ? "All branches · " : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
 
   return (
+    <PendingNav>
     <div className="space-y-4">
       {/* Only changes to this branch's DOs refresh the page (a DO search or All branches hears every change). */}
       <RealtimeRefresh
@@ -169,47 +171,47 @@ export default async function DeliveriesPage({
       <div className="card flex flex-wrap items-center gap-x-2.5 gap-y-2 p-2">
         <nav className="flex rounded-lg bg-slate-100 p-0.5">
           {(Object.keys(DELIVERY_FILTERS) as DeliveryFilter[]).map((value) => (
-            <Link
+            <NavLink
               key={value}
               href={href({ ...keep, show: value || undefined, ...dateParams, q: q || undefined })}
               className={`${TAB} ${show === value ? TAB_ON : TAB_OFF}`}
             >
               {DELIVERY_FILTERS[value].label}
-            </Link>
+            </NavLink>
           ))}
         </nav>
 
-        <Link
+        <NavLink
           href={href({ ...keep, oc: showOc ? undefined : "show", ...dateParams, q: q || undefined })}
           aria-pressed={showOc}
           className={`${TAB} border ${showOc ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-500 hover:text-slate-900"}`}
         >
           {showOc ? "Showing O/C" : "Show O/C"}
-        </Link>
+        </NavLink>
 
         {branch && (
-          <Link
+          <NavLink
             href={href({ ...keep, xb: crossOnly ? undefined : "1", ...dateParams })}
             aria-pressed={crossOnly}
             title={`DOs ${branch} sold that another branch is delivering`}
             className={`${TAB} border ${crossOnly ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-500 hover:text-slate-900"} ${term ? "opacity-50" : ""}`}
           >
             Cross-branch
-          </Link>
+          </NavLink>
         )}
 
         <div className={`flex flex-wrap items-center gap-2 ${term ? "opacity-50" : ""}`}>
           <nav className="flex rounded-lg bg-slate-100 p-0.5">
-            <Link href={href(keep)} className={`${TAB} ${isToday && !term ? TAB_ON : TAB_OFF}`}>Today</Link>
-            <Link href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek && !term ? TAB_ON : TAB_OFF}`}>
+            <NavLink href={href(keep)} className={`${TAB} ${isToday && !term ? TAB_ON : TAB_OFF}`}>Today</NavLink>
+            <NavLink href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek && !term ? TAB_ON : TAB_OFF}`}>
               This week
-            </Link>
-            <Link href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates && !term ? TAB_ON : TAB_OFF}`}>
+            </NavLink>
+            <NavLink href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates && !term ? TAB_ON : TAB_OFF}`}>
               All dates
-            </Link>
+            </NavLink>
           </nav>
           {/* Changing dates or branch starts a fresh look, so it drops any DO search. */}
-          <form className="flex flex-wrap items-center gap-1.5">
+          <NavForm className="flex flex-wrap items-center gap-1.5">
             {hidden({ ...keep, branch: undefined })}
             {!locked && (
               <select name="branch" defaultValue={branch || "all"} aria-label="Branch" className="input w-auto px-2 py-1 text-xs">
@@ -225,20 +227,22 @@ export default async function DeliveriesPage({
             <span className="text-slate-400">–</span>
             <input type="date" name="to" defaultValue={to} aria-label="To" className="input w-auto px-2 py-1 text-xs" />
             <button className="btn-secondary px-2.5 py-1 text-xs">Go</button>
-          </form>
+          </NavForm>
         </div>
 
-        <form className="flex w-full items-center gap-2 lg:ml-auto lg:w-auto">
+        <NavForm className="flex w-full items-center gap-2 lg:ml-auto lg:w-auto">
           {hidden({ ...keep, ...(isToday ? {} : { from, to }) })}
           <input name="q" defaultValue={q} placeholder="🔍 Search DO no." className="input px-2 py-1 text-xs lg:w-40" />
           {q && (
-            <Link href={href({ ...keep, ...dateParams })} className="whitespace-nowrap text-xs text-brand-700 hover:underline">
+            <NavLink href={href({ ...keep, ...dateParams })} className="whitespace-nowrap text-xs text-brand-700 hover:underline">
               Clear
-            </Link>
+            </NavLink>
           )}
-        </form>
+        </NavForm>
+        <PendingSpinner />
       </div>
 
+      <PendingDim>
         <div className={`-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 lg:mx-0 lg:grid ${GRID_COLS[statuses.length]} lg:overflow-visible lg:px-0`}>
           {statuses.map((s) => {
             const col = jobs.filter((j) => j.status === s);
@@ -310,19 +314,21 @@ export default async function DeliveriesPage({
           {limit < MAX_LOADED ? (
             <>
               {" · "}
-              <Link
+              <NavLink
                 href={href({ ...keep, ...dateParams, q: q || undefined, n: String(limit + PAGE) })}
                 scroll={false}
                 className="font-medium text-brand-700 hover:underline"
               >
                 Load {Math.min(PAGE, total - jobs.length)} more
-              </Link>
+              </NavLink>
             </>
           ) : (
             " · narrow the dates to see older ones"
           )}
         </p>
       )}
+      </PendingDim>
     </div>
+    </PendingNav>
   );
 }
