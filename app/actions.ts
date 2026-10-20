@@ -167,6 +167,69 @@ export async function createSpecialDo(formData: FormData) {
   redirect(`/deliveries?from=${date}&to=${date}`);
 }
 
+/** Special DOs can be changed or deleted until the driver starts it. */
+const SPECIAL_EDITABLE: DoStatus[] = ["pending", "assigned", "failed"];
+
+/** Only whoever keyed in a special DO (or an admin) may change or delete it. */
+async function ownSpecialDo(id: string) {
+  const s = await requireStaff();
+  const { data: d } = await s.supabase
+    .from("delivery_orders")
+    .select("id, do_no, source, status, driver_id, created_by")
+    .eq("id", id)
+    .single();
+  if (!d || d.source !== "special") throw new Error("Special DO not found.");
+  if (d.created_by !== s.user.id && s.profile.role !== "admin") throw new Error("Only the person who created this special DO can change it.");
+  if (!SPECIAL_EDITABLE.includes(d.status)) throw new Error(`${d.do_no} can't be changed any more — the driver has already started or delivered it.`);
+  return { ...s, d };
+}
+
+export async function updateSpecialDo(id: string, formData: FormData) {
+  const { supabase, profile, d } = await ownSpecialDo(id);
+  const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
+  const points = Number(formData.get("points"));
+  const driverId = get("driver_id");
+  const date = get("delivery_date") ?? todayMY();
+  if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
+  if (!Number.isInteger(points) || points < 0 || points > 99) throw new Error("Points must be a whole number from 0 to 99.");
+
+  // A new driver (or none) resets the status like Assign does; same driver keeps it.
+  const driverChanged = driverId !== d.driver_id;
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({
+      customer_name: get("customer_name")!,
+      address: get("address"),
+      contact_phone: get("contact_phone"),
+      delivery_date: date,
+      branch: lockedBranch(profile) ?? get("branch"),
+      driver_id: driverId,
+      ...(driverChanged ? { status: driverId ? "assigned" : "pending", failed_reason: null } : {}),
+      instructions: get("instructions"),
+      points,
+      points_manual: true,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("status_events").insert({ do_id: id, status: driverChanged ? (driverId ? "assigned" : "pending") : d.status, note: `${d.do_no} special DO edited` });
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  redirect(`/deliveries?from=${date}&to=${date}`);
+}
+
+export async function deleteSpecialDo(id: string) {
+  const { supabase } = await ownSpecialDo(id);
+  // Its items, history and outstanding notes go with it (on delete cascade).
+  const { error } = await supabase.from("delivery_orders").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  redirect("/deliveries");
+}
+
 /** Office keys in a DO's points (e.g. the address couldn't be found). null = go back to the distance rule. */
 export async function setPoints(doId: string, points: number | null) {
   const { supabase } = await requireStaff();

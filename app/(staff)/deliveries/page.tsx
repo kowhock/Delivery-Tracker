@@ -66,7 +66,7 @@ export default async function DeliveriesPage({
   const crossOnly = sp.xb === "1";
   const q = (sp.q ?? "").trim();
   const term = q.replace(/[,()%*]/g, " ").trim();
-  const { supabase, profile } = await requireStaff();
+  const { supabase, user, profile } = await requireStaff();
   // Opens on the user's own branch, like Driver status. Dispatchers can't switch away from theirs.
   const locked = lockedBranch(profile);
   const pickedBranch = pickBranch(sp.branch, profile.branch);
@@ -265,11 +265,18 @@ export default async function DeliveriesPage({
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
                             <DoOutstanding doId={j.id} doNo={j.do_no} open={open} />
-                            {j.source === "special" && <span className="font-normal text-slate-400">· Special</span>}
                             {j.is_oc && <span className="font-normal text-slate-400">· O/C</span>}
                           </span>
                           <BranchTags job={j} />
                         </div>
+                        {j.source === "special" && (
+                          <p className="-mt-1.5 flex items-center gap-2 text-xs text-slate-400">
+                            Special
+                            {(j.created_by === user.id || profile.role === "admin") && PLANNABLE.includes(j.status) && (
+                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Edit</Link>
+                            )}
+                          </p>
+                        )}
                         <p className="text-xs text-slate-500">
                           <SoLinks job={j} popup={profile.role === "dispatcher"} />
                           {j.source !== "special" && <span className="text-slate-400"> · {j.do_items?.length ?? 0} items</span>}
