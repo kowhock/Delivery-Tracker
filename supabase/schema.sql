@@ -1,5 +1,5 @@
 -- =====================================================================
--- Delivery Tracker — database schema
+-- KH Delivery — database schema
 -- Run this whole file once in Supabase → SQL Editor → New query → Run.
 --
 -- This is the database as it is now (matches the live project). To change

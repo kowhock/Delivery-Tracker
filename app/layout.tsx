@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Delivery Tracker",
+  title: "KH Delivery",
   description: "Track sales orders and deliveries",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "Deliveries", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "KH Delivery", statusBarStyle: "default" },
   icons: { icon: "/icons/favicon.png", apple: "/icons/apple-touch-icon.png" },
 };
 

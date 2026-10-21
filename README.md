@@ -1,4 +1,4 @@
-# Delivery Tracker
+# KH Delivery
 
 Tracks sales orders (SO) → delivery orders (DO) → driver → delivered, and lets drivers WhatsApp customers.
 Built with Next.js, Supabase and Tailwind. SOs and DOs come from AutoCount (Excel export today, AutoCount API later).

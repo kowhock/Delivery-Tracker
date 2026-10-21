@@ -1,6 +1,6 @@
 {
-  "name": "Delivery Tracker",
-  "short_name": "Deliveries",
+  "name": "KH Delivery",
+  "short_name": "KH Delivery",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8fafc",

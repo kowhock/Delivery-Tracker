@@ -1,5 +1,5 @@
 {
-  "name": "delivery-tracker",
+  "name": "kh-delivery",
   "version": "1.0.0",
   "scripts": {
     "dev": "next dev",

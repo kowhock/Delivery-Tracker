@@ -89,14 +89,14 @@ export default function LoginPage() {
         aria-hidden
         className="absolute inset-0 -z-10 scale-110 bg-[url(/login-bg.jpg)] bg-cover bg-center blur-xs lg:scale-105 lg:bg-[url(/login-bg-desktop.jpg)] lg:blur-[2px]"
       />
-      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/80 lg:from-black/60 lg:via-black/40 lg:to-black/70" />
+      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-black/70 via-black/55 to-black/80 lg:from-black/60 lg:via-black/40 sm:to-black/70" />
 
       {/* Desktop: the usual staff sign-in. */}
       <div className="hidden w-full max-w-sm lg:block">
         <div className="mb-8 text-center">
           <img src="/icons/logo.png" alt="" width={56} height={56} className="mx-auto mb-4 size-14 rounded-2xl shadow-lg shadow-black/40" />
-          <h1 className="text-xl font-semibold tracking-tight">Delivery Tracker</h1>
-          <p className="mt-1 text-sm text-white/70">Sign in to continue</p>
+          <h1 className="text-xl font-semibold tracking-tight">KH Delivery</h1>
+          <p className="mt-1 text-sm text-white/70">Kow Hock Hardware</p>
         </div>
         {/* Solid dark navy box with yellow accents, like the team photo (navy shirts, yellow lorries). */}
         <form action={action} className="space-y-4 rounded-2xl border border-white/10 border-t-4 border-t-yellow-400 bg-[#0f1524] p-6 shadow-2xl shadow-black/60">
@@ -128,7 +128,7 @@ export default function LoginPage() {
       <div className="w-full max-w-xs lg:hidden">
         <div className="mb-6 text-center">
           <img src="/icons/logo.png" alt="" width={56} height={56} className="mx-auto mb-3 size-14 rounded-2xl shadow-lg shadow-black/40" />
-          <h1 className="text-xl font-semibold tracking-tight">Delivery Tracker</h1>
+          <h1 className="text-xl font-semibold tracking-tight">KH Delivery</h1>
           <p className="mt-1 text-sm text-white/60">Kow Hock Hardware</p>
         </div>
 

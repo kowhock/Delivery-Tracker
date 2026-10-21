@@ -1,5 +1,5 @@
 -- =====================================================================
--- Delivery Tracker — database changes not yet applied
+-- KH Delivery — database changes not yet applied
 --
 -- schema.sql is the database as it is now. To change it:
 --   1. write the change below (use "if not exists" etc. so it is safe to run twice)
