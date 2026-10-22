@@ -5,7 +5,7 @@ import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBra
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
-import { BranchTags, SoLinks } from "@/components/DocLinks";
+import { BranchTags } from "@/components/DocLinks";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
 import { NavForm, NavLink, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
@@ -277,10 +277,7 @@ export default async function DeliveriesPage({
                             )}
                           </p>
                         )}
-                        <p className="text-xs text-slate-500">
-                          <SoLinks job={j} popup={profile.role === "dispatcher"} />
-                          {j.source !== "special" && <span className="text-slate-400"> · {j.do_items?.length ?? 0} items</span>}
-                        </p>
+                        {j.source !== "special" && <p className="text-xs text-slate-400">{j.do_items?.length ?? 0} items</p>}
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
                         {mapAddress(j) && <p className="line-clamp-2 text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}

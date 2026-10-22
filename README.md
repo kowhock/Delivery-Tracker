@@ -13,7 +13,6 @@ Built with Next.js, Supabase and Tailwind. SOs and DOs come from AutoCount (Exce
 | `/trip-form` | office | A driver's daily (one day) or monthly (date range) trip form with points and commission; PDF via print, or Excel |
 | `/orders` | office | SO list with search, status and date filters |
 | `/orders/[id]` | office | SO detail with AutoCount fields, its DOs (one SO can have many), POD photos, timeline |
-| `/import` | office | Upload the AutoCount SO or DO listing (.xlsx/.csv); SO ↔ DO are linked automatically |
 | `/driver` | drivers | Phone view: today's jobs, Waze/Maps/Call, start → delivered with photo, or failed with reason, WhatsApp buttons |
 
 Roles: **admin** and **dispatcher** see everything. **driver** only sees their own jobs.

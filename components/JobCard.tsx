@@ -46,7 +46,7 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-xs text-slate-500">
-              {job.do_no}{job.so_no && ` · ${job.so_no}`}
+              {job.do_no}
               <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
                 ⭐ {job.points == null ? t.ptsPending : t.pts(job.points)}
               </span>

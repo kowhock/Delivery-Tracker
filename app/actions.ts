@@ -6,9 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getSession, requireAdmin, requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
-import { importAcDeliveryOrders, importAcSalesOrders } from "@/lib/autocount";
 import { bestRoute, mapsEnabled, updateDistances } from "@/lib/geo";
-import type { AcImport, AcImportResult } from "@/lib/autocount-rows";
 import { branchName, canPlan, deliveredOrSoldBy, lockedBranch, storeAddress } from "@/lib/branches";
 import { TIME_SLOTS, TODO_LABEL, type DoItem, type DoStatus, type OutstandingTodo, type SalesOrder } from "@/lib/types";
 
@@ -35,38 +33,6 @@ export async function signOut() {
 }
 
 // ---------- AutoCount import -----------------------------------------
-
-/** Saves an AutoCount SO or DO listing (parsed in the browser from the Excel export). */
-export async function importAutoCount(data: AcImport): Promise<AcImportResult> {
-  const { supabase } = await requireAdmin();
-  const result =
-    data.kind === "so"
-      ? await importAcSalesOrders(supabase, data.rows)
-      : await importAcDeliveryOrders(supabase, data.rows);
-
-  // New / changed delivery addresses → driving distance → driver points.
-  if (data.kind === "do") {
-    const doNos = [...result.created, ...result.updated];
-    const ids: string[] = [];
-    for (let i = 0; i < doNos.length; i += 200) {
-      const { data: rows } = await supabase.from("delivery_orders").select("id").in("do_no", doNos.slice(i, i + 200));
-      ids.push(...(rows ?? []).map((r) => r.id as string));
-    }
-    if (!mapsEnabled()) {
-      result.notes = ["Distances not calculated: GOOGLE_MAPS_API_KEY is not set. Key in points on Driver status."];
-    } else {
-      const d = await updateDistances(supabase, ids);
-      result.notes = [
-        `Distance & points worked out for ${d.measured} DOs.` +
-          (d.needManual ? ` ${d.needManual} need points keyed in or an address typed in on Driver status (click their ⭐).` : ""),
-      ];
-    }
-  }
-  revalidatePath("/orders");
-  revalidatePath("/deliveries");
-  revalidatePath("/drivers");
-  return result;
-}
 
 // ---------- Sales order preview ---------------------------------------
 

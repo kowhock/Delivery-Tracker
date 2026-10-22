@@ -173,8 +173,19 @@ export async function importAcDeliveryOrders(supabase: SupabaseClient, input: Ac
   result.created = created.map(([no]) => no);
   result.updated = [...saved.keys()].filter((no) => before.has(no));
 
+  // Item lines: the AutoCount API sends them, so replace them on every sync.
+  // The Excel export has none: new DOs get the test item instead.
+  const withItems = rows.filter((r) => r.items && saved.has(r.doc_no));
+  for (const part of chunks(withItems.map((r) => saved.get(r.doc_no)!))) await supabase.from("do_items").delete().in("do_id", part);
+  const lines = withItems.flatMap((r) => r.items!.filter((i) => i.qty > 0).map((i) => ({ do_id: saved.get(r.doc_no)!, ...i })));
+  for (const part of chunks(lines)) {
+    const { error } = await supabase.from("do_items").insert(part);
+    if (error) result.errors.push(`Saving DO items: ${error.message}`);
+  }
+  const noItems = created.filter(([no]) => !rows.find((r) => r.doc_no === no)?.items);
+  if (noItems.length) await supabase.from("do_items").insert(noItems.map(([, id]) => ({ do_id: id, ...TEST_ITEM })));
+
   if (created.length) {
-    await supabase.from("do_items").insert(created.map(([, id]) => ({ do_id: id, ...TEST_ITEM })));
     await supabase.from("status_events").insert(
       created.map(([, id]) => ({ do_id: id, status: "do_created", note: "Imported from AutoCount" }))
     );

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { moveToTrip, optimiseTrip } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
-import { BranchTags, SoLinks } from "./DocLinks";
+import { BranchTags } from "./DocLinks";
 import { PointsEditor } from "./PointsEditor";
 import { fmtDate, mapAddress } from "@/lib/format";
 import { withTripPoints } from "@/lib/commission";
@@ -27,13 +27,11 @@ export function DriverTrips({
   dates,
   jobs: initial,
   stats,
-  soPopup = false,
 }: {
   drivers: Driver[];
   dates: string[];
   jobs: DeliveryOrder[];
   stats: Record<string, DriverStats>;
-  soPopup?: boolean; // SO numbers open a popup instead of the SO page (dispatchers)
 }) {
   const [jobs, setJobs] = useState(initial);
   useEffect(() => setJobs(initial), [initial]);
@@ -196,7 +194,6 @@ export function DriverTrips({
                 {j.remarks && <p className="line-clamp-2 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">{j.remarks}</p>}
                 <div className="flex items-center justify-between gap-2 text-slate-400">
                   <span className="whitespace-nowrap">{j.do_items?.length ?? 0} items</span>
-                  <SoLinks job={j} popup={soPopup} className="truncate text-right" />
                 </div>
                 {j.instructions && <p className="line-clamp-2 rounded bg-violet-50 px-1.5 py-0.5 text-violet-800">📋 {j.instructions}</p>}
                 <div className="flex flex-wrap items-center gap-1.5">

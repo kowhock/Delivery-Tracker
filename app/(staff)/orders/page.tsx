@@ -64,7 +64,6 @@ export default async function OrdersPage({
           <h1 className="text-2xl font-semibold tracking-tight">Sales orders</h1>
           <p className="text-sm text-slate-500">Imported from AutoCount, with the DOs they were transferred to.</p>
         </div>
-        <Link href="/import" className="btn-primary">Import from AutoCount</Link>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -104,7 +103,7 @@ export default async function OrdersPage({
             {q || loc || status || from || to ? (
               "No sales orders match these filters."
             ) : (
-              <>No sales orders yet. <Link href="/import" className="font-medium text-brand-700">Import them from AutoCount</Link>.</>
+              "No sales orders yet."
             )}
           </p>
         ) : (

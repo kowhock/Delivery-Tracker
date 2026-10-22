@@ -10,8 +10,6 @@ const LINKS: { href: string; label: string; adminOnly?: boolean }[] = [
   { href: "/outstanding", label: "Outstanding" },
   { href: "/lorries", label: "Lorries" },
   { href: "/trip-form", label: "Trip form" },
-  { href: "/orders", label: "Sales orders", adminOnly: true },
-  { href: "/import", label: "Import", adminOnly: true },
   { href: "/driver", label: "Driver view" },
 ];
 
