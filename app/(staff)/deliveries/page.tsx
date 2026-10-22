@@ -99,7 +99,7 @@ export default async function DeliveriesPage({
       supabase
         .from("delivery_orders")
         .select(
-          "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), do_items(id), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name))",
+          "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name))",
           { count: "exact" }
         )
     )
@@ -264,11 +264,14 @@ export default async function DeliveriesPage({
                       <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                            <DoOutstanding doId={j.id} doNo={j.do_no} open={open} />
+                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} open={open} history={profile.role === "admin"} />
                             {j.is_oc && <span className="font-normal text-slate-400">· O/C</span>}
                           </span>
                           <BranchTags job={j} />
                         </div>
+                        {(j.links?.length || j.so_no) && (
+                          <p className="-mt-1.5 text-xs text-slate-400">{j.links?.length ? j.links.map((l) => l.so_no).join(", ") : j.so_no}</p>
+                        )}
                         {j.source === "special" && (
                           <p className="-mt-1.5 flex items-center gap-2 text-xs text-slate-400">
                             Special
@@ -277,9 +280,8 @@ export default async function DeliveriesPage({
                             )}
                           </p>
                         )}
-                        {j.source !== "special" && <p className="text-xs text-slate-400">{j.do_items?.length ?? 0} items</p>}
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
-                        {mapAddress(j) && <p className="line-clamp-2 text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
+                        {mapAddress(j) && <p className="text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
                         {j.failed_reason && <p className="text-xs text-rose-600">{j.failed_reason}</p>}

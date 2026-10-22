@@ -5,9 +5,7 @@ import { branchName, lockedBranch } from "@/lib/branches";
 import { splitDocNos } from "@/lib/autocount-rows";
 import { DoBadge, SoBadge } from "@/components/StatusBadge";
 import { driverLabel, fmtDate, fmtDateTime, fmtMoney, fmtQty } from "@/lib/format";
-import { DO_STATUS_LABEL, TIME_SLOTS, type DeliveryOrder, type DoStatus, type TimeSlot, type SalesOrder, type StatusEvent } from "@/lib/types";
-
-const EVENT_LABEL: Record<string, string> = { so_created: "Order created", do_created: "DO created", ...DO_STATUS_LABEL };
+import { EVENT_LABEL, TIME_SLOTS, type DeliveryOrder, type DoStatus, type TimeSlot, type SalesOrder, type StatusEvent } from "@/lib/types";
 
 type Item = { id: string; item_code: string; description: string | null; uom: string | null; qty: number };
 

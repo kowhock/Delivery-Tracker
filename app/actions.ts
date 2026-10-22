@@ -8,7 +8,7 @@ import { getSession, requireAdmin, requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { bestRoute, mapsEnabled, updateDistances } from "@/lib/geo";
 import { branchName, canPlan, deliveredOrSoldBy, lockedBranch, storeAddress } from "@/lib/branches";
-import { TIME_SLOTS, TODO_LABEL, type DoItem, type DoStatus, type OutstandingTodo, type SalesOrder } from "@/lib/types";
+import { TIME_SLOTS, TODO_LABEL, type DoItem, type DoStatus, type OutstandingTodo, type SalesOrder, type StatusEvent } from "@/lib/types";
 
 // ---------- Auth ------------------------------------------------------
 
@@ -58,6 +58,28 @@ export async function getSoPreview(soId: string): Promise<SoPreview | null> {
     if (!dos?.length) return null;
   }
   return { so, items: (items ?? []) as DoItem[] };
+}
+
+/** A DO's item lines, for the DO popup on Deliveries. */
+export async function getDoItems(doId: string): Promise<DoItem[]> {
+  const { supabase } = await requireStaff();
+  const { data, error } = await supabase.from("do_items").select("id, item_code, description, uom, qty").eq("do_id", doId);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DoItem[];
+}
+
+/** Who changed a DO and when (newest first), for the DO popup. Admins only. */
+export async function getDoHistory(doId: string): Promise<StatusEvent[]> {
+  const { supabase, profile } = await requireStaff();
+  if (profile.role !== "admin") throw new Error("Only admins can see a DO's history.");
+  const { data, error } = await supabase
+    .from("status_events")
+    .select("id, status, note, created_at, do_id, actor:profiles!status_events_actor_id_fkey(full_name)")
+    .eq("do_id", doId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as StatusEvent[];
 }
 
 // ---------- Outstanding DO work ---------------------------------------
@@ -200,12 +222,24 @@ export async function deleteSpecialDo(id: string) {
 export async function setPoints(doId: string, points: number | null) {
   const { supabase } = await requireStaff();
   if (points != null && (!Number.isInteger(points) || points < 0 || points > 99)) throw new Error("Points must be 0–99.");
+  const { data: before } = await supabase.from("delivery_orders").select("so_id, points").eq("id", doId).single();
   const { error } = await supabase
     .from("delivery_orders")
     .update(points == null ? { points: null, points_manual: false, geo_status: null } : { points, points_manual: true })
     .eq("id", doId);
   if (error) throw new Error(error.message);
-  if (points == null) await updateDistances(supabase, [doId], true);
+  let now = points;
+  if (points == null) {
+    await updateDistances(supabase, [doId], true);
+    now = (await supabase.from("delivery_orders").select("points").eq("id", doId).single()).data?.points ?? null;
+  }
+  const pts = (n: number | null | undefined) => (n == null ? "none" : String(n));
+  await supabase.from("status_events").insert({
+    so_id: before?.so_id,
+    do_id: doId,
+    status: "points",
+    note: `Points ${pts(before?.points)} → ${pts(now)}${points == null ? " (back to the distance rule)" : ""}`,
+  });
   revalidatePath("/drivers");
   revalidatePath("/deliveries");
   revalidatePath("/driver");
@@ -362,7 +396,7 @@ export async function moveToTrip(input: {
 
   const { data: current } = await supabase
     .from("delivery_orders")
-    .select("so_id, status, driver_id, delivery_date, trip_no, branch")
+    .select("so_id, status, driver_id, delivery_date, trip_no, trip_seq, branch")
     .eq("id", doId)
     .single();
   if (!current) throw new Error("Delivery order not found");
@@ -400,12 +434,20 @@ export async function moveToTrip(input: {
     )
   );
 
+  const stop = orderedIds.indexOf(doId);
   if (laneChanged) {
     await supabase.from("status_events").insert({
       so_id: current.so_id,
       do_id: doId,
       status,
       note: `Planned for ${driver.full_name} · Trip ${tripNo} · ${date}`,
+    });
+  } else if (stop >= 0 && stop !== current.trip_seq) {
+    await supabase.from("status_events").insert({
+      so_id: current.so_id,
+      do_id: doId,
+      status: "trip",
+      note: `Moved to stop ${stop + 1} in Trip ${tripNo}`,
     });
   }
 
@@ -426,7 +468,7 @@ export async function optimiseTrip(lane: { driverId: string; date: string; tripN
     supabase.from("profiles").select("branch").eq("id", lane.driverId).single(),
     supabase
       .from("delivery_orders")
-      .select("id, do_no, status, branch, address, map_address, geo_input, geo_lat, geo_lng, trip_seq")
+      .select("id, so_id, do_no, status, branch, address, map_address, geo_input, geo_lat, geo_lng, trip_seq")
       .eq("driver_id", lane.driverId)
       .eq("delivery_date", lane.date)
       .eq("trip_no", lane.tripNo)
@@ -450,6 +492,17 @@ export async function optimiseTrip(lane: { driverId: string; date: string; tripN
   await Promise.all(
     order.map((id, i) => supabase.from("delivery_orders").update({ trip_seq: i }).eq("id", id).eq("trip_no", lane.tripNo))
   );
+  const moved = todo.filter((d) => order.indexOf(d.id) !== d.trip_seq);
+  if (moved.length) {
+    await supabase.from("status_events").insert(
+      moved.map((d) => ({
+        so_id: d.so_id,
+        do_id: d.id,
+        status: "trip",
+        note: `Trip ${lane.tripNo} put in shortest-route order · now stop ${order.indexOf(d.id) + 1}`,
+      }))
+    );
+  }
 
   revalidatePath("/drivers");
   revalidatePath("/driver");

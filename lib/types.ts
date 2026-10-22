@@ -105,6 +105,15 @@ export type DeliveryOrder = {
   outstanding?: Outstanding[]; // only the ones not cleared yet
 };
 
+/** status_events.status → what the timeline / DO history shows. */
+export const EVENT_LABEL: Record<string, string> = {
+  so_created: "Order created",
+  do_created: "DO created",
+  points: "Points changed",
+  trip: "Trip arranged",
+  ...DO_STATUS_LABEL,
+};
+
 export type StatusEvent = {
   id: number;
   status: string;
