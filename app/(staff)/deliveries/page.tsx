@@ -166,7 +166,7 @@ export default async function DeliveriesPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Deliveries</h1>
           <p className="text-sm text-slate-500">
-            {branchLabel}{rangeLabel} · {done} of {total.toLocaleString()} delivered · updates live
+            {branchLabel}{rangeLabel} · {done} of {total.toLocaleString()} delivered
             {sync && <> · <SyncAge syncedAt={sync.synced_at} /></>}
           </p>
         </div>
