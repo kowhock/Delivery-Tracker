@@ -49,6 +49,32 @@ Roles: **admin** and **dispatcher** see everything. **driver** only sees their o
 Push to GitHub → import the repo on [vercel.com](https://vercel.com) → add the same three env variables → Deploy.
 Drivers open the link on their phone and use **Add to Home Screen** (Safari share menu on iPhone, ⋮ menu in Chrome on Android) so it behaves like an app.
 
+## AutoCount sync (office PC)
+
+The office PC (on the same network as AutoCount) runs `scripts/autocount-sync.bat`, started by Windows Task Scheduler
+at startup. Every 5 minutes it copies new and changed DOs from AutoCount into Supabase, and logs to `autocount-sync.log`.
+The project is cloned to `C:\kh-delivery`, with its own `.env.local` (not in git, so copy it there by hand).
+
+**Getting new code onto the office PC.** Only needed when the sync changed (`scripts/autocount-sync.ts` or the `lib/` files it uses).
+Page changes go live through Vercel and don't need the office PC.
+
+1. On your own computer: commit and push to GitHub.
+2. On the office PC, either:
+   - **restart the PC** (or Task Scheduler → the sync task → *End*, then *Run*). The `.bat` runs `git pull` and
+     `npm install` itself before it starts; or
+   - update by hand, then restart the task as above:
+     ```bat
+     cd C:\kh-delivery
+     git pull
+     npm install
+     ```
+3. If the change came with database changes in `supabase/upgrade.sql`, run that in Supabase → SQL Editor **before** step 2.
+4. Check `autocount-sync.log`: the newest `===== … starting` block should show the pull and a sync run without errors.
+
+If `git pull` fails (usually because a file was edited on the office PC), run `git status` to see which file,
+then `git checkout -- <file>` to throw that edit away and pull again. Task Scheduler doesn't need changing
+when the code changes.
+
 ## How data gets in (and where AutoCount plugs in later)
 
 Everything goes through `importAcSalesOrders()` / `importAcDeliveryOrders()` in `lib/autocount.ts`,

@@ -94,6 +94,9 @@ async function main() {
     try {
       await syncOnce(filter);
       lastSuccess = startedAt; // only move forward when the whole run worked
+      // Shown on the Deliveries page as "synced 2 min ago".
+      const { error } = await supabase.from("sync_status").upsert({ source: "autocount", synced_at: new Date().toISOString() });
+      if (error) log(`warning could not save sync time: ${error.message}`);
     } catch (e) {
       log(`ERROR ${e instanceof Error ? e.message : e} — next run will cover this gap`);
     }

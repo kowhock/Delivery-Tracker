@@ -5,6 +5,7 @@ import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBra
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
+import { SyncAge } from "@/components/SyncAge";
 import { BranchTags } from "@/components/DocLinks";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
@@ -94,7 +95,7 @@ export default async function DeliveriesPage({
 
   // Long ranges ("All dates") load the newest PAGE DOs; "Load more" adds the next PAGE.
   const limit = Math.min(Math.max(Number(sp.n) || PAGE, PAGE), MAX_LOADED);
-  const [{ data, count }, { data: driverRows }] = await Promise.all([
+  const [{ data, count }, { data: driverRows }, { data: sync }] = await Promise.all([
     filtered(
       supabase
         .from("delivery_orders")
@@ -108,6 +109,7 @@ export default async function DeliveriesPage({
       .order("created_at", { ascending: false })
       .range(0, limit - 1),
     supabase.from("profiles").select("id, full_name, lorry_no, branch").eq("role", "driver").order("full_name"),
+    supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle(),
   ]);
   // Newest were fetched first; cards still read oldest → newest.
   const jobs = ((data ?? []) as DeliveryOrder[]).reverse();
@@ -158,11 +160,14 @@ export default async function DeliveriesPage({
         table="delivery_orders"
         filter={term || !branch ? undefined : crossOnly ? `sales_branch=eq.${branch}` : `branch=eq.${branch}`}
       />
+      {/* A sync that changed nothing still moves "synced … ago" forward. */}
+      <RealtimeRefresh table="sync_status" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Deliveries</h1>
           <p className="text-sm text-slate-500">
             {branchLabel}{rangeLabel} · {done} of {total.toLocaleString()} delivered · updates live
+            {sync && <> · <SyncAge syncedAt={sync.synced_at} /></>}
           </p>
         </div>
         <Link href="/deliveries/new" className="btn-primary">+ Special DO</Link>

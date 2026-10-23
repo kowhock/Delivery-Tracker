@@ -92,3 +92,19 @@ from public.profiles p
 where p.role = 'driver' and nullif(trim(p.lorry_no), '') is not null
 order by p.lorry_no, p.full_name
 on conflict (lorry_no) do nothing;
+
+-- ---------- AutoCount sync: when it last ran ---------------------------
+-- The office computer's sync writes here after each run, so the Deliveries page
+-- can show "AutoCount synced 2 min ago".
+create table if not exists public.sync_status (
+  source     text primary key,                 -- 'autocount'
+  synced_at  timestamptz not null              -- last run that worked finished at
+);
+alter table public.sync_status enable row level security;
+drop policy if exists "staff all" on public.sync_status;
+create policy "staff all" on public.sync_status for all using ((select public.is_staff())) with check ((select public.is_staff()));
+grant select, insert, update, delete on public.sync_status to authenticated;
+do $$ begin
+  alter publication supabase_realtime add table public.sync_status;
+exception when duplicate_object then null;
+end $$;
