@@ -117,9 +117,11 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
         {mode === "fail" && <FailForm t={t} pending={pending} onCancel={() => setMode("idle")} onSubmit={(reason) => run(() => markFailed(job.id, reason))} />}
 
         {finished && (
-          waDelivered
-            ? <a href={waDelivered} target="_blank" className="btn-whatsapp w-full">{t.sendDelivered}</a>
-            : <p className="text-center text-sm text-emerald-700">{t.deliveredDone}</p>
+          job.wa_sent_at
+            ? <p className="text-center text-sm text-emerald-700">{t.waSent}</p>
+            : waDelivered
+              ? <a href={waDelivered} target="_blank" className="btn-whatsapp w-full">{t.sendDelivered}</a>
+              : <p className="text-center text-sm text-emerald-700">{t.deliveredDone}</p>
         )}
 
         {job.status === "failed" && (

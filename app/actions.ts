@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSession, requireAdmin, requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { bestRoute, mapsEnabled, updateDistances } from "@/lib/geo";
+import { sendDeliveredNotice, waApiEnabled } from "@/lib/whatsapp-api";
 import { branchName, canPlan, deliveredOrSoldBy, lockedBranch, storeAddress } from "@/lib/branches";
 import { TIME_SLOTS, TODO_LABEL, type DoItem, type DoStatus, type OutstandingTodo, type SalesOrder, type StatusEvent } from "@/lib/types";
 
@@ -543,7 +544,34 @@ export async function markDelivered(doId: string, photoPath: string | null, note
     .update({ status: "delivered", pod_photo_path: photoPath, delivered_at: new Date().toISOString() })
     .eq("id", doId);
   if (error) throw new Error(error.message);
+  await notifyDelivered(supabase, doId);
   await logAndRevalidate(supabase, doId, "delivered", note);
+}
+
+/** WhatsApps the customer "delivered" + the POD photo from the company number, and records how it went. Never throws. */
+async function notifyDelivered(supabase: SupabaseClient, doId: string) {
+  if (!waApiEnabled()) return;
+  const { data: d } = await supabase
+    .from("delivery_orders")
+    .select("customer_name, so_no, do_no, contact_phone, pod_photo_path")
+    .eq("id", doId)
+    .single();
+  if (!d) return;
+  // Meta downloads the photo when it sends; a day leaves room for its retries.
+  const photo = d.pod_photo_path ? (await supabase.storage.from("pod").createSignedUrl(d.pod_photo_path, 86400)).data?.signedUrl ?? null : null;
+  const ref = d.so_no ? `${d.so_no} (${d.do_no})` : d.do_no;
+  const r = await sendDeliveredNotice(d.contact_phone, { customer_name: d.customer_name, ref }, photo);
+  await supabase
+    .from("delivery_orders")
+    .update(r.ok ? { wa_sent_at: new Date().toISOString(), wa_error: null } : { wa_error: r.error })
+    .eq("id", doId);
+}
+
+/** Office: send the "delivered" WhatsApp again (e.g. after fixing the phone number). */
+export async function resendDeliveredNotice(doId: string) {
+  const { supabase } = await requireStaff();
+  await notifyDelivered(supabase, doId);
+  revalidatePath("/orders/[id]", "page");
 }
 
 export async function markFailed(doId: string, reason: string) {

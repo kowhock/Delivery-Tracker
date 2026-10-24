@@ -97,6 +97,8 @@ export type DeliveryOrder = {
   status: DoStatus;
   failed_reason: string | null;
   pod_photo_path: string | null;
+  wa_sent_at: string | null; // "delivered" WhatsApp sent from the company number
+  wa_error: string | null; // why the last send failed
   delivered_at: string | null;
   created_by: string | null; // staff who keyed it in (special DOs)
   driver?: { full_name: string; lorry_no: string | null } | null;

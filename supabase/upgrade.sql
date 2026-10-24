@@ -108,3 +108,9 @@ do $$ begin
   alter publication supabase_realtime add table public.sync_status;
 exception when duplicate_object then null;
 end $$;
+
+-- ---------- Delivery orders: WhatsApp sent from the company number ------
+-- Set when the server sends the "delivered" WhatsApp (with POD photo) through the
+-- WhatsApp Cloud API. wa_error = why the last try failed (shown to the office).
+alter table public.delivery_orders add column if not exists wa_sent_at timestamptz;
+alter table public.delivery_orders add column if not exists wa_error   text;

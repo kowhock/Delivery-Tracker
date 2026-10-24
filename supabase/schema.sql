@@ -172,6 +172,8 @@ create table public.delivery_orders (
   status         public.do_status not null default 'pending',
   failed_reason  text,
   pod_photo_path text,                         -- proof-of-delivery photo in storage bucket "pod"
+  wa_sent_at     timestamptz,                  -- "delivered" WhatsApp sent from the company number (Cloud API)
+  wa_error       text,                         -- why the last WhatsApp send failed
   delivered_at   timestamptz,
   created_by     uuid default auth.uid() references public.profiles on delete set null,
   created_at     timestamptz not null default now()

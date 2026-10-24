@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
+import { resendDeliveredNotice } from "@/app/actions";
+import { waApiEnabled } from "@/lib/whatsapp-api";
 import { branchName, lockedBranch } from "@/lib/branches";
 import { splitDocNos } from "@/lib/autocount-rows";
 import { DoBadge, SoBadge } from "@/components/StatusBadge";
@@ -167,6 +169,14 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
                     </p>
                   )}
                   {d.failed_reason && <p className="mt-2 text-sm text-rose-600">Failed: {d.failed_reason}</p>}
+                  {d.status === "delivered" && waApiEnabled() && (
+                    <form action={resendDeliveredNotice.bind(null, d.id)} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                      {d.wa_sent_at
+                        ? <span className="text-emerald-700">✓ WhatsApp sent {fmtDateTime(d.wa_sent_at)}</span>
+                        : <span className="text-rose-600">WhatsApp not sent{d.wa_error && `: ${d.wa_error}`}</span>}
+                      <button className="text-brand-700 hover:underline">{d.wa_sent_at ? "Send again" : "Retry"}</button>
+                    </form>
+                  )}
                   {photoUrls[d.id] && (
                     <a href={photoUrls[d.id]} target="_blank" className="mt-3 inline-block">
                       {/* eslint-disable-next-line @next/next/no-img-element */}

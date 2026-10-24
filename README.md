@@ -49,6 +49,37 @@ Roles: **admin** and **dispatcher** see everything. **driver** only sees their o
 Push to GitHub → import the repo on [vercel.com](https://vercel.com) → add the same three env variables → Deploy.
 Drivers open the link on their phone and use **Add to Home Screen** (Safari share menu on iPhone, ⋮ menu in Chrome on Android) so it behaves like an app.
 
+## WhatsApp from the company number (optional)
+
+When a driver taps **Delivered**, the server WhatsApps the customer "delivered" + the POD photo from one
+company number (Meta's WhatsApp Cloud API). The driver's card then shows ✓ and the office sees
+"WhatsApp sent" (or why it failed, with **Retry**) on the order page. Without these settings, drivers keep
+using their own WhatsApp buttons, and they're also the fallback when a send fails.
+
+1. **Number**: a SIM or landline that is *not* on the WhatsApp / WhatsApp Business app (delete that account first if it is).
+   Once on the API you can't open it in the WhatsApp app.
+2. **Meta Business account**: [business.facebook.com](https://business.facebook.com) → create it with the company's details.
+   Later, Business Settings → Security Center → *Start verification* (SSM docs) to lift the 250-customers-a-day limit.
+3. **App**: [developers.facebook.com](https://developers.facebook.com) → My Apps → Create app → *Business* type → add **WhatsApp**.
+   WhatsApp → API Setup → *Add phone number*, verify it by SMS/call. Copy its **Phone number ID**.
+4. **Permanent token**: Business Settings → Users → System users → Add (Admin) → *Assign assets*: the app (full control)
+   and the WhatsApp account → *Generate token*, never expires, ticking `whatsapp_business_messaging` and
+   `whatsapp_business_management`. (The token on the API Setup page expires in 24 hours: only for testing.)
+5. **Template**: WhatsApp Manager → Message templates → Create → category **Utility**, name `delivered_photo`,
+   language English. Header: **Image** (upload any sample). Body, e.g.:
+   ```
+   Hi {{1}}, your order {{2}} has been delivered. Thank you for choosing Kow Hock!
+   ```
+   {{1}} = customer name, {{2}} = SO (DO) number. Submit and wait for *Active*.
+   Optional: the same body with no header as `delivered_text`, for deliveries without a photo.
+   For Malay, create it in language Malay and set `WHATSAPP_TEMPLATE_LANG=ms`.
+6. **Payment**: WhatsApp Manager → add a card (per message; utility messages cost a few sen in Malaysia).
+7. **Settings**: put `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_DELIVERED`
+   (and optionally `WHATSAPP_TEMPLATE_DELIVERED_NO_PHOTO`, `WHATSAPP_TEMPLATE_LANG`) in `.env.local` and in Vercel → Settings →
+   Environment Variables, then redeploy.
+
+Test: mark a test DO delivered with your own mobile number as its contact phone.
+
 ## AutoCount sync (office PC)
 
 The office PC (on the same network as AutoCount) runs `scripts/autocount-sync.bat`, started by Windows Task Scheduler
