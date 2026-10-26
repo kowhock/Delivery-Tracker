@@ -18,6 +18,8 @@ export type TripDo = { id: string; doNo: string; location: string; timeIn: strin
 export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
 
 type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[] };
+/** What the office typed into the daily form's blank boxes (lorry checks, empty DO boxes…), by box key. */
+type Filled = { filled: Record<string, string>; setFilled: (f: (r: Record<string, string>) => Record<string, string>) => void };
 
 /** 2026-06-29 → 29.06.2026 (or 29/06/2026 with sep "/"). */
 const dotted = (iso: string, sep = ".") => iso.split("-").reverse().join(sep);
@@ -37,6 +39,7 @@ function pages(dos: TripDo[]): (TripDo | undefined)[][][] {
 export function TripForm(props: Props) {
   const daily = props.from === props.to;
   const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [filled, setFilled] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const day = props.days[0];
   const missing = props.days.reduce((s, x) => s + x.missingPoints, 0);
@@ -46,7 +49,7 @@ export function TripForm(props: Props) {
     try {
       const ExcelJS = (await import("exceljs")).default;
       const wb = new ExcelJS.Workbook();
-      if (daily) dailySheet(wb, props);
+      if (daily) dailySheet(wb, props, filled);
       else monthlySheet(wb, props, remarks);
       const buf = await wb.xlsx.writeBuffer();
       const a = document.createElement("a");
@@ -65,7 +68,7 @@ export function TripForm(props: Props) {
         <span className="mr-auto text-sm text-slate-600">
           <b>{daily ? "Daily" : "Monthly"} trip form</b> · {props.days.reduce((s, x) => s + x.points, 0)} pts ·{" "}
           {rm(props.days.reduce((s, x) => s + x.rm, 0))}
-          {!daily && " · type OFF / MC etc. in Remarks before exporting"}
+          {daily ? " · blank boxes can be typed in before printing / exporting" : " · type OFF / MC etc. in Remarks before exporting"}
         </span>
         <button type="button" onClick={() => window.print()} className="btn-secondary">
           PDF / Print
@@ -81,7 +84,7 @@ export function TripForm(props: Props) {
       )}
 
       {daily ? (
-        pages(day.dos).map((rows, i) => <DailyPage key={i} {...props} day={day} rows={rows} />)
+        pages(day.dos).map((rows, i) => <DailyPage key={i} {...props} day={day} rows={rows} page={i} filled={filled} setFilled={setFilled} />)
       ) : (
         <MonthlyPage {...props} remarks={remarks} setRemarks={setRemarks} />
       )}
@@ -93,8 +96,26 @@ export function TripForm(props: Props) {
 
 const cell = "border border-black px-1.5 py-1";
 const head = `${cell} text-left font-bold uppercase`;
+/** Typed-in text is italic, so it stands apart from what the app filled in. */
+const typedText = "italic";
 
-function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay; rows: (TripDo | undefined)[][] }) {
+/** Box keys: lorry checks are one set for the day; DO boxes are per page/row/side/field. */
+const checkKey = (c: string) => `check:${c}`;
+const boxKey = (page: number, row: number, side: number, field: string) => `do:${page}:${row}:${side}:${field}`;
+
+/** A blank box the office can type into; prints and exports what was typed. */
+function Blank({ k, label, filled, setFilled, className = "" }: Filled & { k: string; label: string; className?: string }) {
+  return (
+    <input
+      value={filled[k] ?? ""}
+      onChange={(e) => setFilled((r) => ({ ...r, [k]: e.target.value.toUpperCase() }))}
+      className={`w-full bg-transparent outline-none focus:bg-brand-50 print:focus:bg-transparent ${typedText} ${className}`}
+      aria-label={label}
+    />
+  );
+}
+
+function DailyPage({ branch, driver, lorry, day, rows, page, filled, setFilled }: Props & Filled & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
   return (
     // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
     <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
@@ -113,7 +134,9 @@ function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay;
             </tr>
             <tr>
               {CHECKS.map((c) => (
-                <td key={c} className={`${cell} h-6`} />
+                <td key={c} className={`${cell} h-6 py-0`}>
+                  <Blank k={checkKey(c)} label={c} filled={filled} setFilled={setFilled} className="text-center" />
+                </td>
               ))}
             </tr>
             <tr>
@@ -123,7 +146,9 @@ function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay;
               <th colSpan={2} className={`${head} text-center`}>Amount</th>
             </tr>
             <tr>
-              <td className={`${cell} h-6 text-center`}>{day.trips || ""}</td>
+              <td className={`${cell} h-6 py-0 text-center`}>
+                {day.trips || <Blank k="trips" label="Trips" filled={filled} setFilled={setFilled} className="text-center" />}
+              </td>
               <td className={`${cell} text-center font-semibold`}>{day.points}</td>
               <td colSpan={2} className={`${cell} text-center`}>{rm(day.rm)}</td>
             </tr>
@@ -154,7 +179,7 @@ function DailyPage({ branch, driver, lorry, day, rows }: Props & { day: TripDay;
             {FIELDS.map((f, k) => (
               <tr key={f}>
                 {pair.map((x, side) => (
-                  <DoBoxRow key={side} field={f} row={k} x={x} />
+                  <DoBoxRow key={side} field={f} row={k} x={x} at={(field) => boxKey(page, r, side, field)} filled={filled} setFilled={setFilled} />
                 ))}
               </tr>
             ))}
@@ -169,8 +194,9 @@ const LABELS = { doNo: "DO NO.", location: "LOCATION", timeIn: "TIME IN", timeBa
 type Field = keyof typeof LABELS;
 const FIELDS = Object.keys(LABELS) as Field[];
 
-function DoBoxRow({ field, row, x }: { field: Field; row: number; x?: TripDo }) {
+function DoBoxRow({ field, row, x, at, filled, setFilled }: Filled & { field: Field; row: number; x?: TripDo; at: (field: string) => string }) {
   const value = x?.[field] ?? "";
+  const blank = (f: string, className?: string) => <Blank k={at(f)} label={f === "points" ? "Points" : LABELS[field]} filled={filled} setFilled={setFilled} className={className} />;
   return (
     <>
       <th className={`${head} h-8 text-[10px] print:h-[8.5mm] print:text-[11px]`}>{LABELS[field]}</th>
@@ -180,13 +206,17 @@ function DoBoxRow({ field, row, x }: { field: Field; row: number; x?: TripDo }) 
           <div className="truncate text-[9px] text-slate-500 print:text-[10px]">{x.original}</div>
           <div className="line-clamp-2 break-words">{value}</div>
         </td>
+      ) : field === "location" && !value ? (
+        <td className={`${cell} py-0`}>{blank(field)}</td>
       ) : field === "location" ? (
         // Long addresses wrap onto a second line (cut off after that) instead of being cut at one.
         <td className={`${cell} py-0.5 leading-tight`} title={value}>
           <div className="line-clamp-2 break-words">{value}</div>
         </td>
-      ) : (
+      ) : value ? (
         <td className={`${cell} truncate ${row === 0 ? "font-semibold" : ""}`} title={value}>{value}</td>
+      ) : (
+        <td className={`${cell} py-0 ${row === 0 ? "font-semibold" : ""}`}>{blank(field)}</td>
       )}
       {row === 0 ? (
         <th className={`${head} text-center text-[10px]`}>Remark</th>
@@ -196,7 +226,8 @@ function DoBoxRow({ field, row, x }: { field: Field; row: number; x?: TripDo }) 
           className={`${cell} text-center text-xl font-semibold ${x?.manual ? "bg-blue-100 print:bg-blue-100" : ""}`}
           title={x?.manual ? "Points keyed in by staff" : undefined}
         >
-          {x?.points ?? ""}
+          {/* A real DO's points come from Driver status (typed ones wouldn't reach the totals); empty boxes are free. */}
+          {x ? x.points ?? "" : blank("points", "text-center")}
         </td>
       ) : null}
     </>
@@ -260,7 +291,7 @@ function MonthlyPage({
                   <input
                     value={remarks[x.date] ?? ""}
                     onChange={(e) => setRemarks((r) => ({ ...r, [x.date]: e.target.value.toUpperCase() }))}
-                    className="w-full bg-transparent py-0.5 leading-tight text-center outline-none focus:bg-brand-50 print:focus:bg-transparent"
+                    className={`w-full bg-transparent py-0.5 leading-tight text-center outline-none focus:bg-brand-50 print:focus:bg-transparent ${typedText}`}
                     aria-label={`Remark for ${slashed(x.date)}`}
                   />
                 )}
@@ -290,14 +321,15 @@ function MonthlyPage({
 const thin = { style: "thin" as const };
 const border = { top: thin, left: thin, bottom: thin, right: thin };
 const grey = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFD9D9D9" } };
+const typedFont = { italic: true }; // typed in by the office
 const lightBlue = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFDBEAFE" } }; // points keyed in by staff
 
 /** Writes a value with a border; `merge` = "B3:C3" style range starting at `at`. */
-function put(ws: Worksheet, at: string, value: string | number | null, opts: { bold?: boolean; merge?: string; center?: boolean; fill?: boolean; noBorder?: boolean; size?: number } = {}) {
+function put(ws: Worksheet, at: string, value: string | number | null, opts: { bold?: boolean; merge?: string; center?: boolean; fill?: boolean; noBorder?: boolean; size?: number; typed?: boolean } = {}) {
   if (opts.merge) ws.mergeCells(opts.merge);
   const c = ws.getCell(at);
   c.value = value;
-  c.font = { bold: opts.bold, size: opts.size ?? 10 };
+  c.font = { bold: opts.bold, size: opts.size ?? 10, ...(opts.typed ? typedFont : {}) };
   c.alignment = { vertical: "middle", horizontal: opts.center ? "center" : "left", wrapText: true };
   if (opts.fill) c.fill = grey;
   if (!opts.noBorder) {
@@ -317,7 +349,7 @@ function setupPage(ws: Worksheet, onePage = false) {
   ws.pageSetup = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: onePage ? 1 : 0, margins: { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } };
 }
 
-function dailySheet(wb: Workbook, p: Props) {
+function dailySheet(wb: Workbook, p: Props, filled: Record<string, string>) {
   const day = p.days[0];
   pages(day.dos).forEach((rows, n) => {
     const ws = wb.addWorksheet(n ? `Daily (${n + 1})` : "Daily");
@@ -332,13 +364,13 @@ function dailySheet(wb: Workbook, p: Props) {
     put(ws, "C1", "LORRY CHECKING", { bold: true, merge: "C1:F1", center: true });
     CHECKS.forEach((c, i) => {
       put(ws, `${"CDEF"[i]}2`, c, { bold: true, center: true });
-      put(ws, `${"CDEF"[i]}3`, "");
+      put(ws, `${"CDEF"[i]}3`, filled[checkKey(c)] ?? "", { center: true, typed: true });
     });
     put(ws, "C4", "DAILY TRIP CALCULATION", { bold: true, merge: "C4:F4", center: true });
     put(ws, "C5", "TRIP", { bold: true, center: true });
     put(ws, "D5", "POINT", { bold: true, center: true });
     put(ws, "E5", "AMOUNT", { bold: true, merge: "E5:F5", center: true });
-    put(ws, "C6", day.trips || "", { center: true });
+    put(ws, "C6", day.trips || (filled.trips ?? ""), { center: true, typed: !day.trips });
     put(ws, "D6", day.points, { center: true, bold: true });
     put(ws, "E6", rm(day.rm), { merge: "E6:F6", center: true });
 
@@ -350,16 +382,18 @@ function dailySheet(wb: Workbook, p: Props) {
     put(ws, "B9", day.lorry || p.lorry);
 
     let r = 11;
-    for (const pair of rows) {
+    for (const [row, pair] of rows.entries()) {
       const last = r + FIELDS.length - 1;
       pair.forEach((x, side) => {
         const [L, V, R] = side ? ["D", "E", "F"] : ["A", "B", "C"];
         FIELDS.forEach((f, k) => {
           put(ws, `${L}${r + k}`, LABELS[f], { bold: true });
-          put(ws, `${V}${r + k}`, f === "location" && x?.original ? `Original: ${x.original}\nUpdated: ${x.location}` : x?.[f] ?? "", { bold: k === 0 });
+          const typed = filled[boxKey(n, row, side, f)] ?? "";
+          const auto = f === "location" && x?.original ? `Original: ${x.original}\nUpdated: ${x.location}` : x?.[f];
+          put(ws, `${V}${r + k}`, auto || typed, { bold: k === 0, typed: !auto });
         });
         put(ws, `${R}${r}`, "REMARK", { bold: true, center: true });
-        put(ws, `${R}${r + 1}`, x?.points ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14 });
+        put(ws, `${R}${r + 1}`, x ? x.points ?? "" : filled[boxKey(n, row, side, "points")] ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14, typed: !x });
         if (x?.manual) for (let k = r + 1; k <= last; k++) ws.getCell(`${R}${k}`).fill = lightBlue;
       });
       // The location line fits two lines of text, or four when it shows the original and updated address.
@@ -393,7 +427,7 @@ function monthlySheet(wb: Workbook, p: Props, remarks: Record<string, string>) {
     put(ws, `B${r}`, x ? slashed(x.date) : "-", { center: true, fill: shade });
     put(ws, `C${r}`, x?.points ?? 0, { center: true, fill: shade });
     put(ws, `D${r}`, x?.rm ?? 0, { center: true, fill: shade });
-    put(ws, `E${r}`, x ? remarks[x.date] ?? "" : "", { center: true, fill: shade });
+    put(ws, `E${r}`, x ? remarks[x.date] ?? "" : "", { center: true, fill: shade, typed: true });
     ws.getCell(`D${r}`).numFmt = '"RM"#,##0.00';
     ws.getRow(r).height = 16;
   }
