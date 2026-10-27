@@ -100,6 +100,7 @@ export type DeliveryOrder = {
   wa_sent_at: string | null; // "delivered" WhatsApp sent from the company number
   wa_error: string | null; // why the last send failed
   delivered_at: string | null;
+  started_at?: string | null; // when the driver last tapped Start (from status_events, see lib/delivery-times.ts)
   created_by: string | null; // staff who keyed it in (special DOs)
   driver?: { full_name: string; lorry_no: string | null } | null;
   do_items?: DoItem[];

@@ -69,6 +69,15 @@ export async function getDoItems(doId: string): Promise<DoItem[]> {
   return (data ?? []) as DoItem[];
 }
 
+/** A signed link (valid 1 hour) to a DO's proof-of-delivery photo, for the DO popup. null = no photo. */
+export async function getPodPhotoUrl(doId: string): Promise<string | null> {
+  const { supabase } = await requireStaff();
+  const { data: d } = await supabase.from("delivery_orders").select("pod_photo_path").eq("id", doId).single();
+  if (!d?.pod_photo_path) return null;
+  const { data } = await supabase.storage.from("pod").createSignedUrl(d.pod_photo_path, 3600);
+  return data?.signedUrl ?? null;
+}
+
 /** Who changed a DO and when (newest first), for the DO popup. Admins only. */
 export async function getDoHistory(doId: string): Promise<StatusEvent[]> {
   const { supabase, profile } = await requireStaff();

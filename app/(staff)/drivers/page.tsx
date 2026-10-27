@@ -6,6 +6,7 @@ import { DriverTrips, type DriverStats } from "@/components/DriverTrips";
 import { CalculatePointsButton } from "@/components/PointsEditor";
 import { dayTotals, sumDays, withTripPoints } from "@/lib/commission";
 import { mapsEnabled } from "@/lib/geo";
+import { withStartedAt } from "@/lib/delivery-times";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 
 const MAX_DAYS = 31;
@@ -64,7 +65,7 @@ export default async function DriversPage({
       .order("trip_no")
       .order("trip_seq")
       .order("created_at");
-    jobs = (data ?? []) as DeliveryOrder[];
+    jobs = await withStartedAt(supabase, (data ?? []) as DeliveryOrder[]);
   }
   const done = jobs.filter((j) => j.status === "delivered").length;
   const missingPoints = jobs.filter((j) => j.points == null && !j.points_manual).map((j) => j.id);

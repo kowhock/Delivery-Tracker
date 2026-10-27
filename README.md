@@ -1,7 +1,11 @@
 # KH Delivery
 
-Tracks sales orders (SO) → delivery orders (DO) → driver → delivered, and lets drivers WhatsApp customers.
-Built with Next.js, Supabase and Tailwind. SOs and DOs come from AutoCount (Excel export today, AutoCount API later).
+KH Delivery is a web app for Kow Hock that tracks every delivery order from AutoCount to the customer's door.
+Delivery orders sync from AutoCount every 5 minutes. Office staff plan routes and assign drivers and lorries.
+Drivers use a phone app to navigate, mark jobs delivered with a photo, and the customer automatically gets a
+WhatsApp confirmation. It also works out each driver's points and daily commission, and produces trip forms for payroll.
+
+Built with Next.js, Supabase and Tailwind.
 
 ## What's inside
 

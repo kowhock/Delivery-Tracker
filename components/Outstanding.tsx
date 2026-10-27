@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { addOutstanding, clearOutstanding, getDoHistory, getDoItems } from "@/app/actions";
+import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrl } from "@/app/actions";
 import { fmtDateTime, fmtQty } from "@/lib/format";
 import { EVENT_LABEL, TODO_LABEL, todoLabel, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent } from "@/lib/types";
 
@@ -34,12 +34,28 @@ export function ClearButton({ id }: { id: string }) {
 /**
  * A DO number that opens the DO's items, with "Add remark" for flagging outstanding work.
  * `history`: also list who changed the DO and when (admins only).
+ * `photo`: the DO has a proof-of-delivery photo to show.
  */
-export function DoOutstanding({ doId, doNo, customer, open, history = false }: { doId: string; doNo: string; customer?: string; open: Outstanding[]; history?: boolean }) {
+export function DoOutstanding({
+  doId,
+  doNo,
+  customer,
+  open,
+  history = false,
+  photo = false,
+}: {
+  doId: string;
+  doNo: string;
+  customer?: string;
+  open: Outstanding[];
+  history?: boolean;
+  photo?: boolean;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [isOpen, setOpen] = useState(false);
   const [items, setItems] = useState<DoItem[] | null>(null);
   const [events, setEvents] = useState<StatusEvent[] | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [adding, setAdding] = useState(false);
 
@@ -47,10 +63,11 @@ export function DoOutstanding({ doId, doNo, customer, open, history = false }: {
     setOpen(true);
     setState("loading");
     try {
-      // Items don't change; history is fetched fresh on every open.
-      const [i, h] = await Promise.all([items ?? getDoItems(doId), history ? getDoHistory(doId) : null]);
+      // Items don't change; history and the photo link (it expires) are fetched fresh on every open.
+      const [i, h, p] = await Promise.all([items ?? getDoItems(doId), history ? getDoHistory(doId) : null, photo ? getPodPhotoUrl(doId) : null]);
       setItems(i);
       setEvents(h);
+      setPhotoUrl(p);
       setState("idle");
     } catch {
       setState("error");
@@ -63,8 +80,9 @@ export function DoOutstanding({ doId, doNo, customer, open, history = false }: {
 
   return (
     <>
-      <button type="button" onClick={show} className="hover:text-brand-700 hover:underline" title="See items / add remark">
+      <button type="button" onClick={show} className="hover:text-brand-700 hover:underline" title={photo ? "See items, delivery photo / add remark" : "See items / add remark"}>
         {doNo}
+        {photo && <span className="ml-1" aria-label="has delivery photo">📷</span>}
       </button>
       {/* Portalled to <body> so the popup isn't nested inside the card's markup. */}
       {isOpen &&
@@ -88,6 +106,19 @@ export function DoOutstanding({ doId, doNo, customer, open, history = false }: {
 
             <div className="max-h-[65dvh] space-y-4 overflow-y-auto px-5 py-4">
               {open.length > 0 && <OpenList open={open} />}
+              {photo && (
+                <div>
+                  <h3 className="mb-1 font-semibold">Proof of delivery</h3>
+                  {photoUrl ? (
+                    <a href={photoUrl} target="_blank" rel="noreferrer" title="Open full size">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- signed Supabase link, not a static asset */}
+                      <img src={photoUrl} alt={`Delivery photo for ${doNo}`} className="max-h-80 w-full rounded-xl border border-slate-100 object-contain" />
+                    </a>
+                  ) : (
+                    state === "loading" ? <p className="text-slate-500">Loading photo…</p> : state === "idle" && <p className="text-slate-500">Photo not found.</p>
+                  )}
+                </div>
+              )}
               <div>
                 <h3 className="mb-1 font-semibold">Items</h3>
                 {state === "loading" && !items && <p className="text-slate-500">Loading…</p>}

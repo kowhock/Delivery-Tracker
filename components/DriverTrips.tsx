@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { moveToTrip, optimiseTrip } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
 import { BranchTags } from "./DocLinks";
+import { DoOutstanding } from "./Outstanding";
 import { PointsEditor } from "./PointsEditor";
 import { fmtDate, mapAddress } from "@/lib/format";
 import { withTripPoints } from "@/lib/commission";
@@ -181,12 +182,16 @@ export function DriverTrips({
                   over === j.id && dragId !== j.id ? "border-t-4 border-t-brand-600" : ""
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-900">
+                {/* DO number on its own line; the status (with its time) underneath, so long badges don't squeeze it. */}
+                <div className="space-y-1">
+                  <span className="block whitespace-nowrap font-semibold text-slate-900">
                     <span className="mr-1 text-slate-400">{i + 1}.</span>
-                    {j.do_no}
+                    <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} open={[]} photo={!!j.pod_photo_path} />
                   </span>
-                  <DoBadge status={j.status} />
+                  <DoBadge
+                    status={j.status}
+                    at={j.status === "delivered" ? j.delivered_at : j.status === "out_for_delivery" ? j.started_at : null}
+                  />
                 </div>
                 <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
                 {mapAddress(j) && <p className="line-clamp-2 text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}

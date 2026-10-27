@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateRange, dayLabel, driverLabel, fmtMoney, isMobile, mapAddress, mapsLinks, normalizePhone, weekRange } from "./format";
+import { addDays, dateRange, dayLabel, driverLabel, fmtMoney, fmtTime, isMobile, mapAddress, mapsLinks, normalizePhone, weekRange } from "./format";
 
 describe("normalizePhone", () => {
   it.each([
@@ -44,6 +44,12 @@ describe("dates", () => {
   it("addDays crosses months and years", () => {
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
     expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
+  });
+
+  it("fmtTime shows Malaysia time, whatever the computer's timezone", () => {
+    expect(fmtTime("2026-10-27T06:15:00Z")).toBe("2:15pm");
+    expect(fmtTime("2026-10-27T01:05:00+08:00")).toBe("1:05am");
+    expect(fmtTime(null)).toBe("");
   });
 
   it("dayLabel names today and tomorrow", () => {

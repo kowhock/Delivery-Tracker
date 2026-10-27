@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { driverLabel, fmtDate, mapAddress, todayMY, weekRange } from "@/lib/format";
+import { driverLabel, fmtDate, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
+import { withStartedAt } from "@/lib/delivery-times";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
@@ -112,7 +113,7 @@ export default async function DeliveriesPage({
     supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle(),
   ]);
   // Newest were fetched first; cards still read oldest → newest.
-  const jobs = ((data ?? []) as DeliveryOrder[]).reverse();
+  const jobs = await withStartedAt(supabase, ((data ?? []) as DeliveryOrder[]).reverse());
   const total = count ?? jobs.length;
   const capped = total > jobs.length;
   // Delivered count across everything matching, not just the loaded DOs.
@@ -269,7 +270,7 @@ export default async function DeliveriesPage({
                       <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} open={open} history={profile.role === "admin"} />
+                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path} />
                             {j.is_oc && <span className="font-normal text-slate-400">· O/C</span>}
                           </span>
                           <BranchTags job={j} />
@@ -289,6 +290,13 @@ export default async function DeliveriesPage({
                         {mapAddress(j) && <p className="text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
+                        {(j.started_at || (j.status === "delivered" && j.delivered_at)) && (
+                          <p className="text-xs font-medium text-slate-600">
+                            ⏱ {j.started_at && `Out ${fmtTime(j.started_at)}`}
+                            {j.started_at && j.status === "delivered" && j.delivered_at && " · "}
+                            {j.status === "delivered" && j.delivered_at && <span className="text-emerald-700">Delivered {fmtTime(j.delivered_at)}</span>}
+                          </p>
+                        )}
                         {j.failed_reason && <p className="text-xs text-rose-600">{j.failed_reason}</p>}
                         {open.map((o) => (
                           <p key={o.id} className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">

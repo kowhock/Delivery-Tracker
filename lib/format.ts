@@ -47,6 +47,11 @@ export function fmtDateTime(d: string): string {
   });
 }
 
+/** "2:15pm" in Malaysia time; "" when there's no time. */
+export function fmtTime(iso: string | null | undefined): string {
+  return iso ? new Date(iso).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", timeZone: TZ }).replace(" ", "").toLowerCase() : "";
+}
+
 export function fmtQty(n: number): string {
   return Number(n).toLocaleString("en-MY", { maximumFractionDigits: 2 });
 }

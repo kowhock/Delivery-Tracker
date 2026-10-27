@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { branchName, lockedBranch } from "@/lib/branches";
-import { addDays, dateRange, mapAddress, todayMY } from "@/lib/format";
+import { addDays, dateRange, fmtTime, mapAddress, todayMY } from "@/lib/format";
+import { startedTimes } from "@/lib/delivery-times";
 import { commissionForDay, withTripPoints } from "@/lib/commission";
 import { lorryLabel, type Lorry, type Profile } from "@/lib/types";
 import { TripForm, type TripDay } from "@/components/TripForm";
@@ -11,8 +12,6 @@ const MAX_DAYS = 31; // the monthly form has 31 rows
 
 const TZ = "Asia/Kuala_Lumpur";
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
-const timeOf = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", timeZone: TZ }).replace(" ", "").toLowerCase() : "";
 
 export default async function TripFormPage({
   searchParams,
@@ -49,15 +48,7 @@ export default async function TripFormPage({
     const delivered = withTripPoints(rows ?? []);
 
     // Time in = when the driver tapped Start (the last time, if started more than once).
-    const started = new Map<string, string>();
-    for (let i = 0; i < delivered.length; i += 200) {
-      const { data: ev } = await supabase
-        .from("status_events")
-        .select("do_id, created_at")
-        .in("do_id", delivered.slice(i, i + 200).map((d) => d.id))
-        .eq("status", "out_for_delivery");
-      for (const e of ev ?? []) if (e.created_at > (started.get(e.do_id) ?? "")) started.set(e.do_id, e.created_at);
-    }
+    const started = await startedTimes(supabase, delivered.map((d) => d.id));
 
     // Lorries used (stamped on each DO when delivered); else the driver's lorry now.
     const lorryIds = [...new Set(delivered.map((d) => d.lorry_id).filter((x): x is string => !!x))];
@@ -86,8 +77,8 @@ export default async function TripFormPage({
           id: d.id,
           doNo: d.do_no,
           location: mapAddress(d) || d.customer_name,
-          timeIn: timeOf(started.get(d.id)),
-          timeBack: timeOf(d.delivered_at),
+          timeIn: fmtTime(started.get(d.id)),
+          timeBack: fmtTime(d.delivered_at),
           points: d.points,
           manual: d.points_manual && d.points != null,
           original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",

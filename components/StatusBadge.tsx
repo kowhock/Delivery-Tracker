@@ -1,3 +1,4 @@
+import { fmtTime } from "@/lib/format";
 import { DO_STATUS_LABEL, SO_STATUS_LABEL, type DoStatus, type SoStatus } from "@/lib/types";
 
 const DO_STYLE: Record<DoStatus, string> = {
@@ -17,11 +18,13 @@ const SO_STYLE: Record<SoStatus, string> = {
 
 const base = "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset whitespace-nowrap";
 
-export function DoBadge({ status, label }: { status: DoStatus; label?: string }) {
+/** `at`: when it got this status, shown after the label ("Delivered · 3:40pm"). */
+export function DoBadge({ status, label, at }: { status: DoStatus; label?: string; at?: string | null }) {
   return (
     <span className={`${base} ${DO_STYLE[status]}`}>
       <span className="size-1.5 rounded-full bg-current opacity-70" />
       {label ?? DO_STATUS_LABEL[status]}
+      {at && <span className="tabular-nums">· {fmtTime(at)}</span>}
     </span>
   );
 }
