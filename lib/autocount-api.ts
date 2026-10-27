@@ -54,7 +54,8 @@ async function post(path: string, body: unknown, token?: string) {
   return text ? JSON.parse(text) : null;
 }
 
-// Tokens expire daily: keep one, log in again when it's rejected.
+// Tokens expire daily: keep one, log in again when it's rejected. After the AutoCount API restarts, old
+// tokens get 403 "LicenseNotAllowed" instead of 401 — a fresh login fixes that too.
 let token: string | null = null;
 
 async function login() {
@@ -75,7 +76,7 @@ export async function acSelect(what: AcReadable, filter: AcSelectFilter = {}) {
   try {
     return await post(`/api/${what}/select`, body, token ?? (await login()));
   } catch (e) {
-    if ((e as { status?: number }).status !== 401) throw e;
+    if (![401, 403].includes((e as { status?: number }).status ?? 0)) throw e;
     return post(`/api/${what}/select`, body, await login());
   }
 }

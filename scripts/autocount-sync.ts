@@ -14,7 +14,8 @@ import { mapsEnabled, updateDistances } from "../lib/geo";
 
 const EVERY_MIN = 5;
 const OVERLAP_MIN = 5; // re-read a few minutes before the last run, so nothing slips between runs
-const FIRST_RUN_HOURS = 1; // when the loop starts, catch up on the last day
+const FIRST_RUN_HOURS = 24; // when the loop starts and there's no earlier sync on record, catch up on the last day
+const MAX_CATCH_UP_DAYS = 7; // after a long gap (PC off for a week), don't re-read more than this
 
 const need = (k: string) => {
   const v = process.env[k];
@@ -81,7 +82,12 @@ async function main() {
   }
 
   log(`Syncing every ${EVERY_MIN} minutes. Ctrl+C stops it.`);
-  let lastSuccess: Date | null = null;
+  // Carry on from the last good sync, so changes made while this PC was off or asleep aren't missed.
+  const { data: last } = await supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle();
+  let lastSuccess: Date | null = last?.synced_at
+    ? new Date(Math.max(new Date(last.synced_at).getTime(), Date.now() - MAX_CATCH_UP_DAYS * 864e5))
+    : null;
+  if (lastSuccess) log(`Catching up from the last sync at ${timeMY(lastSuccess)}`);
 
   for (;;) {
     const startedAt = new Date();
