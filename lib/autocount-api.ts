@@ -91,18 +91,20 @@ const joinAddr = (r: ApiDoc) => [r.DeliverAddr1, r.DeliverAddr2, r.DeliverAddr3,
 /** Reads every page. */
 async function selectAll(what: AcReadable, filter: AcSelectFilter): Promise<ApiDoc[]> {
   const Limit = 100;
-  const all: ApiDoc[] = [];
+  const all = new Map<string, ApiDoc>();
   for (let page = 1; ; page++) {
     const t0 = Date.now();
     const data = await acSelect(what, { ...filter, RecordCount: page, Limit });
     if (!data?.Success) throw new Error(`AutoCount ${what}: ${JSON.stringify(data).slice(0, 300)}`);
     const list = (Object.values(data.SdkResult ?? {}).find(Array.isArray) ?? []) as ApiDoc[];
-    console.log(`[${what}] page ${page}: ${list.length} docs (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
-    if (list.length && all.some((d) => d.DocNo === list[0].DocNo)) break; // same page again: stop
-    all.push(...list);
-    if (list.length < Limit) break;
+    // Pages can overlap (AutoCount's order isn't fixed), so keep every DO not seen yet instead of
+    // dropping a page whose first DO is a repeat. Stop on a short page, or one with nothing new.
+    const fresh = list.filter((d) => !all.has(d.DocNo));
+    for (const d of fresh) all.set(d.DocNo, d);
+    console.log(`[${what}] page ${page}: ${list.length} docs, ${fresh.length} new (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+    if (list.length < Limit || !fresh.length) break;
   }
-  return all;
+  return [...all.values()];
 }
 
 
