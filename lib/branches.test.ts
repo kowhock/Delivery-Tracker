@@ -6,6 +6,7 @@ describe("branchFromDoNo", () => {
   it("reads the branch from the DO prefix, ignoring case and spaces", () => {
     expect(branchFromDoNo("GPD-00044524")).toBe("GP");
     expect(branchFromDoNo(" pdd-00045420 ")).toBe("PD");
+    expect(branchFromDoNo("SND-00001234")).toBe("SL");
     expect(branchFromDoNo("XYZ-1")).toBeNull();
   });
 });

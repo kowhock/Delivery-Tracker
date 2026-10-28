@@ -29,6 +29,11 @@ export const BRANCHES = [
     code: "PT", name: "Pontian", doPrefix: "PTD", soPrefix: "PTS", locations: ["PT", "PTS"],
     store: "J46, Jalan Ulu Pulai, Kampung Parit Kassim, 82000 Pontian, Johor",
   },
+  {
+    // TODO: soPrefix / locations guessed from the DO prefix (SND) — check against AutoCount.
+    code: "SL", name: "Seelong", doPrefix: "SND", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
+    store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
+  },
   // Delivered by the supplier; kept so the selling branch can still follow it.
   { code: "NB2", name: "NB2 (supplier delivery)", doPrefix: "NBD", soPrefix: "NBS", locations: ["NB2", "NB"], store: null },
 ] as const;
