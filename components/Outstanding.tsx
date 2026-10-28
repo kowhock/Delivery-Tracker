@@ -35,6 +35,7 @@ export function ClearButton({ id }: { id: string }) {
  * A DO number that opens the DO's items, with "Add remark" for flagging outstanding work.
  * `history`: also list who changed the DO and when (admins only).
  * `photo`: the DO has a proof-of-delivery photo to show.
+ * `createdAt`: when the DO came into the system (AutoCount sync or keyed in), shown under the customer.
  */
 export function DoOutstanding({
   doId,
@@ -43,6 +44,7 @@ export function DoOutstanding({
   open,
   history = false,
   photo = false,
+  createdAt,
 }: {
   doId: string;
   doNo: string;
@@ -50,6 +52,7 @@ export function DoOutstanding({
   open: Outstanding[];
   history?: boolean;
   photo?: boolean;
+  createdAt?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [isOpen, setOpen] = useState(false);
@@ -98,6 +101,7 @@ export function DoOutstanding({
               <div>
                 <h2 className="text-lg font-semibold tracking-tight">{doNo}</h2>
                 {customer && <p className="text-slate-600">{customer}</p>}
+                {createdAt && <p className="text-xs text-slate-400">Created {fmtDateTime(createdAt)}</p>}
               </div>
               <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
                 ×

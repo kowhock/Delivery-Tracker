@@ -102,6 +102,7 @@ export type DeliveryOrder = {
   delivered_at: string | null;
   started_at?: string | null; // when the driver last tapped Start (from status_events, see lib/delivery-times.ts)
   created_by: string | null; // staff who keyed it in (special DOs)
+  created_at: string; // when it came into the system (AutoCount sync or keyed in)
   driver?: { full_name: string; lorry_no: string | null } | null;
   do_items?: DoItem[];
   links?: DoSoLink[];
