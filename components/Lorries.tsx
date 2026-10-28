@@ -61,7 +61,7 @@ export function Lorries({
   events,
   today,
   branch,
-  lockedBranch,
+  lockedBranches,
 }: {
   lorries: Lorry[];
   allLorries: Lorry[]; // every branch's, to tell which lorry a driver is on now
@@ -70,7 +70,7 @@ export function Lorries({
   events: Record<string, LorryEvent[]>;
   today: string;
   branch: string | null;
-  lockedBranch: string | null;
+  lockedBranches: string[] | null; // dispatchers: the branches they can put a lorry under
 }) {
   const [editing, setEditing] = useState<Lorry | "new" | null>(null);
   const [servicing, setServicing] = useState<Lorry | null>(null);
@@ -241,7 +241,7 @@ export function Lorries({
       {servicing && (
         <MaintenanceForm lorry={servicing} driver={servicing.driver_id ? name(servicing.driver_id) : null} today={today} onClose={() => setServicing(null)} />
       )}
-      {editing && <LorryForm lorry={editing === "new" ? null : editing} branch={branch} lockedBranch={lockedBranch} onClose={() => setEditing(null)} />}
+      {editing && <LorryForm lorry={editing === "new" ? null : editing} branch={branch} lockedBranches={lockedBranches} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -304,7 +304,7 @@ function MaintenanceForm({ lorry, driver, today, onClose }: { lorry: Lorry; driv
   );
 }
 
-function LorryForm({ lorry, branch, lockedBranch, onClose }: { lorry: Lorry | null; branch: string | null; lockedBranch: string | null; onClose: () => void }) {
+function LorryForm({ lorry, branch, lockedBranches, onClose }: { lorry: Lorry | null; branch: string | null; lockedBranches: string[] | null; onClose: () => void }) {
   const { save, error, pending } = useSave(saveLorry, onClose);
   return (
     <Modal title={lorry ? `Edit lorry ${lorry.lorry_no}` : "Add lorry"} onClose={onClose}>
@@ -320,12 +320,12 @@ function LorryForm({ lorry, branch, lockedBranch, onClose }: { lorry: Lorry | nu
             <input name="plate_no" defaultValue={lorry?.plate_no ?? ""} placeholder="JQN 9833" className="input uppercase" />
           </label>
         </div>
-        {!lockedBranch && (
+        {(!lockedBranches || lockedBranches.length > 1) && (
           <label className="block">
             <span className="label">Branch</span>
             <select name="branch" defaultValue={lorry?.branch ?? branch ?? ""} className="input">
-              <option value="">No branch</option>
-              {BRANCHES.filter((b) => b.store).map((b) => (
+              {!lockedBranches && <option value="">No branch</option>}
+              {BRANCHES.filter((b) => b.store && (!lockedBranches || lockedBranches.includes(b.code))).map((b) => (
                 <option key={b.code} value={b.code}>{b.name}</option>
               ))}
             </select>

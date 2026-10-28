@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchFromDoNo, branchFromLocation, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "./branches";
+import { branchFromDoNo, branchFromLocation, branchName, branchToSave, canPlan, deliveredOrSoldBy, lockedBranches, pageBranch, pickBranch, userBranches } from "./branches";
 import { splitDocNos } from "./autocount-rows";
 
 describe("branchFromDoNo", () => {
@@ -29,23 +29,50 @@ describe("who sees and plans what", () => {
     expect(canPlan("GP", "PD")).toBe(false);
     expect(canPlan(null, "PD")).toBe(true);
     expect(canPlan("GP", null)).toBe(true);
+    expect(canPlan("KS,MS", "MS")).toBe(true);
+    expect(canPlan("KS,MS", "GP")).toBe(false);
   });
 
-  it("lockedBranch: only dispatchers with a branch are kept to it", () => {
-    expect(lockedBranch({ role: "dispatcher", branch: "GP" })).toBe("GP");
-    expect(lockedBranch({ role: "dispatcher", branch: null })).toBeNull();
-    expect(lockedBranch({ role: "admin", branch: "GP" })).toBeNull();
+  it("userBranches: one code or several, comma-separated", () => {
+    expect(userBranches("KS")).toEqual(["KS"]);
+    expect(userBranches(" ks, MS ,")).toEqual(["KS", "MS"]);
+    expect(userBranches(null)).toEqual([]);
+  });
+
+  it("lockedBranches: only dispatchers with branches are kept to them", () => {
+    expect(lockedBranches({ role: "dispatcher", branch: "GP" })).toEqual(["GP"]);
+    expect(lockedBranches({ role: "dispatcher", branch: "KS,MS" })).toEqual(["KS", "MS"]);
+    expect(lockedBranches({ role: "dispatcher", branch: null })).toBeNull();
+    expect(lockedBranches({ role: "admin", branch: "GP" })).toBeNull();
   });
 
   it("pickBranch: own branch by default, '' for all", () => {
     expect(pickBranch(undefined, "GP")).toBe("GP");
     expect(pickBranch(undefined, null)).toBe("");
+    expect(pickBranch(undefined, "KS,MS")).toBe("");
     expect(pickBranch("all", "GP")).toBe("");
     expect(pickBranch("PD", "GP")).toBe("PD");
   });
 
+  it("pageBranch: dispatchers stay inside their branches", () => {
+    const one = { role: "dispatcher", branch: "GP" };
+    const two = { role: "dispatcher", branch: "KS,MS" };
+    expect(pageBranch("PD", one)).toBe("GP");
+    expect(pageBranch(undefined, two)).toBe("");
+    expect(pageBranch("MS", two)).toBe("MS");
+    expect(pageBranch("GP", two)).toBe("");
+    expect(pageBranch("PD", { role: "admin", branch: "GP" })).toBe("PD");
+  });
+
+  it("branchToSave: dispatchers only save under one of their branches", () => {
+    expect(branchToSave({ role: "dispatcher", branch: "KS,MS" }, "MS")).toBe("MS");
+    expect(branchToSave({ role: "dispatcher", branch: "KS,MS" }, "GP")).toBe("KS");
+    expect(branchToSave({ role: "admin", branch: "KS" }, "GP")).toBe("GP");
+  });
+
   it("deliveredOrSoldBy builds the PostgREST filter", () => {
-    expect(deliveredOrSoldBy("GP")).toBe("branch.eq.GP,sales_branch.eq.GP");
+    expect(deliveredOrSoldBy("GP")).toBe("branch.in.(GP),sales_branch.in.(GP)");
+    expect(deliveredOrSoldBy(["KS", "MS"])).toBe("branch.in.(KS,MS),sales_branch.in.(KS,MS)");
   });
 
   it("branchName falls back to the code", () => {

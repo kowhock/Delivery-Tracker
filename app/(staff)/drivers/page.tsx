@@ -1,5 +1,5 @@
 import { requireStaff } from "@/lib/auth";
-import { lockedBranch, pickBranch } from "@/lib/branches";
+import { lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { dateRange, todayMY } from "@/lib/format";
 import type { DeliveryOrder, Profile } from "@/lib/types";
 import { DriverTrips, type DriverStats } from "@/components/DriverTrips";
@@ -24,17 +24,21 @@ export default async function DriversPage({
   const dates = dateRange(from, to, MAX_DAYS);
 
   // Opens on the user's own branch's drivers; they can switch to another branch or all
-  // (dispatchers stay on their own branch).
+  // (dispatchers stay on their own branches).
   const { data: driverRows } = await supabase
     .from("profiles")
     .select("id, full_name, branch, lorry_no")
     .eq("role", "driver")
     .order("full_name");
   const allDrivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "branch" | "lorry_no">[];
-  const locked = lockedBranch(profile);
-  const branch = locked ?? pickBranch(sp.branch, profile.branch);
-  const branches = [...new Set([...allDrivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
-  const drivers = branch ? allDrivers.filter((d) => d.branch === branch) : allDrivers;
+  const locked = lockedBranches(profile);
+  const branch = pageBranch(sp.branch, profile);
+  const branches = locked ?? [...new Set([...allDrivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
+  const drivers = branch
+    ? allDrivers.filter((d) => d.branch === branch)
+    : locked
+      ? allDrivers.filter((d) => d.branch && locked.includes(d.branch))
+      : allDrivers;
 
   let jobs: DeliveryOrder[] = [];
   const stats: Record<string, DriverStats> = {};
@@ -77,17 +81,17 @@ export default async function DriversPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Driver status</h1>
           <p className="text-sm text-slate-500">
-            {branch ? `${branch} branch · ` : branches.length ? "All branches · " : ""}
+            {branch ? `${branch} branch · ` : locked ? `${locked.join(" + ")} branches · ` : branches.length ? "All branches · " : ""}
             {done} of {jobs.length} delivered · drag orders to arrange trips · click ⭐ to set points
           </p>
           {mapsEnabled() && <div className="mt-2"><CalculatePointsButton ids={missingPoints} /></div>}
         </div>
         <form className="flex flex-wrap items-center gap-2">
-          {branches.length > 0 && !locked && (
+          {branches.length > 1 && (!locked || locked.length > 1) && (
             <select name="branch" defaultValue={branch || "all"} className="input w-auto">
-              <option value="all">All branches</option>
+              <option value="all">{locked ? "All my branches" : "All branches"}</option>
               {branches.map((b) => (
-                <option key={b} value={b}>{b}{b === profile.branch ? " (mine)" : ""}</option>
+                <option key={b} value={b}>{b}{!locked && userBranches(profile.branch).includes(b) ? " (mine)" : ""}</option>
               ))}
             </select>
           )}

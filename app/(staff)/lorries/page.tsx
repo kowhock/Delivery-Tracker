@@ -1,5 +1,5 @@
 import { requireStaff } from "@/lib/auth";
-import { branchName, lockedBranch, pickBranch } from "@/lib/branches";
+import { branchName, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { todayMY } from "@/lib/format";
 import type { Lorry, Profile } from "@/lib/types";
 import { Lorries, type LorryJobs, type LorryEvent } from "@/components/Lorries";
@@ -17,11 +17,15 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
   const allLorries = (lorryRows ?? []) as Lorry[];
   const drivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "branch">[];
 
-  // Same branch picker as Driver status (dispatchers stay on their own branch).
-  const locked = lockedBranch(profile);
-  const branch = locked ?? pickBranch(sp.branch, profile.branch);
-  const branches = [...new Set([...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
-  const lorries = branch ? allLorries.filter((l) => l.branch === branch) : allLorries;
+  // Same branch picker as Driver status (dispatchers stay on their own branches).
+  const locked = lockedBranches(profile);
+  const branch = pageBranch(sp.branch, profile);
+  const branches = locked ?? [...new Set([...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
+  const lorries = branch
+    ? allLorries.filter((l) => l.branch === branch)
+    : locked
+      ? allLorries.filter((l) => l.branch && locked.includes(l.branch))
+      : allLorries;
 
   // What each lorry's driver is doing today, and the lorry's latest history.
   const driverIds = lorries.map((l) => l.driver_id).filter((x): x is string => !!x);
@@ -63,16 +67,16 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Lorries</h1>
           <p className="text-sm text-slate-500">
-            {branch ? `${branchName(branch)} branch · ` : "All branches · "}
+            {branch ? `${branchName(branch)} branch · ` : locked ? `${locked.map(branchName).join(" + ")} branches · ` : "All branches · "}
             {lorries.length} {lorries.length === 1 ? "lorry" : "lorries"} · who drives which lorry, and maintenance
           </p>
         </div>
-        {branches.length > 0 && !locked && (
+        {branches.length > 1 && (!locked || locked.length > 1) && (
           <form className="flex items-center gap-2">
             <select name="branch" defaultValue={branch || "all"} className="input w-auto">
-              <option value="all">All branches</option>
+              <option value="all">{locked ? "All my branches" : "All branches"}</option>
               {branches.map((b) => (
-                <option key={b} value={b}>{branchName(b)}{b === profile.branch ? " (mine)" : ""}</option>
+                <option key={b} value={b}>{branchName(b)}{!locked && userBranches(profile.branch).includes(b) ? " (mine)" : ""}</option>
               ))}
             </select>
             <button className="btn-secondary">Go</button>
@@ -88,7 +92,7 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
         events={events}
         today={today}
         branch={branch || null}
-        lockedBranch={locked}
+        lockedBranches={locked}
       />
     </div>
   );

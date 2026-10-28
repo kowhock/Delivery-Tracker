@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
-import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
+import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
@@ -70,9 +70,9 @@ export default async function DeliveriesPage({
   const term = q.replace(/[,()%*]/g, " ").trim();
   const { supabase, user, profile } = await requireStaff();
   // Opens on the user's own branch, like Driver status. Dispatchers can't switch away from theirs.
-  const locked = lockedBranch(profile);
-  const pickedBranch = pickBranch(sp.branch, profile.branch);
-  const branch = locked ?? (BRANCHES.some((b) => b.code === pickedBranch) ? pickedBranch : "");
+  const locked = lockedBranches(profile);
+  const pickedBranch = pageBranch(sp.branch, profile);
+  const branch = BRANCHES.some((b) => b.code === pickedBranch) ? pickedBranch : "";
 
   // No dates picked = every delivery; otherwise only deliveries dated inside the range.
   // Searching a DO number looks across all dates (and branches, unless the user is kept to one) —
@@ -151,7 +151,7 @@ export default async function DeliveriesPage({
           ? "All dates"
           : `${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}`;
   const branchLabel =
-    term && !locked ? "" : !branch ? "All branches · " : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
+    term && !locked ? "" : !branch ? (locked ? `${locked.join(" + ")} branches · ` : "All branches · ") : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
 
   return (
     <PendingNav>
@@ -219,12 +219,12 @@ export default async function DeliveriesPage({
           {/* Changing dates or branch starts a fresh look, so it drops any DO search. */}
           <NavForm className="flex flex-wrap items-center gap-1.5">
             {hidden({ ...keep, branch: undefined })}
-            {!locked && (
+            {(!locked || locked.length > 1) && (
               <select name="branch" defaultValue={branch || "all"} aria-label="Branch" className="input w-auto px-2 py-1 text-xs">
-                <option value="all">All branches</option>
-                {BRANCHES.map((b) => (
+                <option value="all">{locked ? "All my branches" : "All branches"}</option>
+                {BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => (
                   <option key={b.code} value={b.code}>
-                    {b.code}{b.code === profile.branch ? " (mine)" : ""}
+                    {b.code}{!locked && userBranches(profile.branch).includes(b.code) ? " (mine)" : ""}
                   </option>
                 ))}
               </select>

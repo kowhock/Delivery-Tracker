@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { lockedBranch } from "@/lib/branches";
+import { lockedBranches, userBranches } from "@/lib/branches";
 import { todayMY } from "@/lib/format";
 import { createSpecialDo } from "@/app/actions";
 import { SpecialDoForm } from "@/components/SpecialDoForm";
@@ -25,14 +25,14 @@ export default async function NewSpecialDoPage() {
       <SpecialDoForm
         action={createSpecialDo}
         drivers={drivers}
-        lockedTo={lockedBranch(profile)}
+        lockedTo={lockedBranches(profile)}
         submitLabel="Create special DO"
         values={{
           customer_name: "",
           address: null,
           contact_phone: null,
           delivery_date: todayMY(),
-          branch: profile.branch,
+          branch: userBranches(profile.branch)[0] ?? null,
           driver_id: null,
           points: null,
           instructions: null,

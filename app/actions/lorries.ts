@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireStaff } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
-import { branchName, canPlan, lockedBranch } from "@/lib/branches";
+import { branchName, branchToSave, canPlan } from "@/lib/branches";
 
 // ---------- Lorries ---------------------------------------------------
 
@@ -34,7 +34,7 @@ export async function saveLorry(formData: FormData): Promise<{ error?: string }>
   const row = {
     lorry_no: lorryNo,
     plate_no: get("plate_no").toUpperCase() || null,
-    branch: lockedBranch(profile) ?? (get("branch") || null), // dispatchers only keep their own branch's lorries
+    branch: branchToSave(profile, get("branch") || null), // dispatchers only keep their own branches' lorries
   };
   if (id) await lorryForEdit(supabase, profile, id);
   const { data, error } = id

@@ -2,12 +2,12 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { signOut } from "../actions";
 import { NavLinks } from "@/components/NavLinks";
-import { deliveredOrSoldBy, lockedBranch } from "@/lib/branches";
+import { deliveredOrSoldBy, lockedBranches } from "@/lib/branches";
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const { supabase, profile } = await requireStaff();
   // Badge on the Outstanding tab: not cleared yet (dispatchers: their branch's DOs only).
-  const locked = lockedBranch(profile);
+  const locked = lockedBranches(profile);
   let open = supabase.from("do_outstanding").select("id, delivery:delivery_orders!inner(id)", { count: "exact", head: true }).is("cleared_at", null);
   if (locked) open = open.or(deliveredOrSoldBy(locked), { referencedTable: "delivery" });
   const { count: outstanding } = await open;

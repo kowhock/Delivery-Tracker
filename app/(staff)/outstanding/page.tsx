@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { addDays, fmtDate, fmtDateTime } from "@/lib/format";
-import { BRANCHES, deliveredOrSoldBy, lockedBranch, pickBranch } from "@/lib/branches";
+import { BRANCHES, deliveredOrSoldBy, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { todoLabel, type DeliveryOrder, type Outstanding } from "@/lib/types";
 import { BranchTags } from "@/components/DocLinks";
 import { ClearButton } from "@/components/Outstanding";
@@ -30,10 +30,10 @@ export default async function OutstandingPage({
   const from = sp.from ?? "";
   const to = sp.to && (!from || sp.to >= from) ? sp.to : "";
   const { supabase, profile } = await requireStaff();
-  // Dispatchers only see their own branch (DOs it delivers or sold).
-  const locked = lockedBranch(profile);
-  const pickedBranch = pickBranch(sp.branch, profile.branch);
-  const branch = locked ?? (BRANCHES.some((b) => b.code === pickedBranch) ? pickedBranch : "");
+  // Dispatchers only see their own branches (DOs they deliver or sold).
+  const locked = lockedBranches(profile);
+  const pickedBranch = pageBranch(sp.branch, profile);
+  const branch = BRANCHES.some((b) => b.code === pickedBranch) ? pickedBranch : "";
 
   let query = supabase
     .from("do_outstanding")
@@ -47,7 +47,7 @@ export default async function OutstandingPage({
   // Dates are the day the remark was added (Malaysia time).
   if (from) query = query.gte("created_at", `${from}T00:00:00+08:00`);
   if (to) query = query.lt("created_at", `${addDays(to, 1)}T00:00:00+08:00`);
-  if (branch) query = query.or(deliveredOrSoldBy(branch), { referencedTable: "delivery" });
+  if (branch || locked) query = query.or(deliveredOrSoldBy(branch || locked!), { referencedTable: "delivery" });
   const { data, error } = await query;
   if (error) console.error("Loading outstanding failed:", error.message);
 
@@ -61,7 +61,7 @@ export default async function OutstandingPage({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Outstanding</h1>
         <p className="text-sm text-slate-500">
-          {branch ? `${branch} branch · ` : "All branches · "}
+          {branch ? `${branch} branch · ` : locked ? `${locked.join(" + ")} branches · ` : "All branches · "}
           {from || to ? `Added ${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}` : "All dates"} · {openCount} not cleared
         </p>
         <p className="mt-1 text-xs text-slate-400">Tap a DO number on Deliveries to add one.</p>
@@ -77,12 +77,12 @@ export default async function OutstandingPage({
         </nav>
         <form className="flex flex-wrap items-center gap-1.5">
           {show && <input type="hidden" name="show" value={show} />}
-          {!locked && (
+          {(!locked || locked.length > 1) && (
             <select name="branch" defaultValue={branch || "all"} aria-label="Branch" className="input w-auto px-2 py-1 text-xs">
-              <option value="all">All branches</option>
-              {BRANCHES.map((b) => (
+              <option value="all">{locked ? "All my branches" : "All branches"}</option>
+              {BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => (
                 <option key={b.code} value={b.code}>
-                  {b.code}{b.code === profile.branch ? " (mine)" : ""}
+                  {b.code}{!locked && userBranches(profile.branch).includes(b.code) ? " (mine)" : ""}
                 </option>
               ))}
             </select>

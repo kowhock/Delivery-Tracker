@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
-import { canPlan, lockedBranch } from "@/lib/branches";
+import { branchToSave, canPlan } from "@/lib/branches";
 import { TIME_SLOTS, type DoStatus } from "@/lib/types";
 import { notYourBranch } from "./_shared";
 
@@ -28,7 +28,7 @@ export async function createSpecialDo(formData: FormData) {
       address: get("address"),
       contact_phone: get("contact_phone"),
       delivery_date: date,
-      branch: lockedBranch(profile) ?? get("branch"), // dispatchers always create for their own branch
+      branch: branchToSave(profile, get("branch")), // dispatchers always create for one of their own branches
       driver_id: driverId,
       status: driverId ? "assigned" : "pending",
       instructions: get("instructions"),
@@ -82,7 +82,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       address: get("address"),
       contact_phone: get("contact_phone"),
       delivery_date: date,
-      branch: lockedBranch(profile) ?? get("branch"),
+      branch: branchToSave(profile, get("branch")),
       driver_id: driverId,
       ...(driverChanged ? { status: driverId ? "assigned" : "pending", failed_reason: null } : {}),
       instructions: get("instructions"),

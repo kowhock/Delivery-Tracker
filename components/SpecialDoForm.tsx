@@ -32,8 +32,8 @@ export function SpecialDoForm({
 }: {
   action: (formData: FormData) => Promise<void>;
   drivers: Pick<Profile, "id" | "full_name" | "lorry_no">[];
-  /** Dispatchers: the only branch they can pick. */
-  lockedTo: string | null;
+  /** Dispatchers: the only branches they can pick. */
+  lockedTo: string[] | null;
   values: Values;
   submitLabel: string;
   /** Edit page only: deletes the special DO. */
@@ -63,7 +63,7 @@ export function SpecialDoForm({
         <label className="label">Branch</label>
         <select name="branch" defaultValue={values.branch ?? ""} className="input">
           {!lockedTo && <option value="">—</option>}
-          {BRANCHES.filter((b) => !lockedTo || b.code === lockedTo).map((b) => <option key={b.code} value={b.code}>{b.code} · {b.name}</option>)}
+          {BRANCHES.filter((b) => !lockedTo || lockedTo.includes(b.code)).map((b) => <option key={b.code} value={b.code}>{b.code} · {b.name}</option>)}
         </select>
       </div>
       <div>

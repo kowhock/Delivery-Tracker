@@ -1,7 +1,7 @@
 "use server";
 
 import { requireStaff } from "@/lib/auth";
-import { deliveredOrSoldBy, lockedBranch } from "@/lib/branches";
+import { deliveredOrSoldBy, lockedBranches } from "@/lib/branches";
 import type { DoItem, SalesOrder, StatusEvent } from "@/lib/types";
 
 // ---------- Sales order preview ---------------------------------------
@@ -16,9 +16,9 @@ export async function getSoPreview(soId: string): Promise<SoPreview | null> {
     supabase.from("so_items").select("id, item_code, description, uom, qty").eq("so_id", soId).order("line_no"),
   ]);
   if (!so) return null;
-  // Same rule as the SO page: dispatchers see their branch's SOs, or SOs on a DO their branch delivers or sold.
-  const locked = lockedBranch(profile);
-  if (locked && so.branch !== locked) {
+  // Same rule as the SO page: dispatchers see their branches' SOs, or SOs on a DO their branches deliver or sold.
+  const locked = lockedBranches(profile);
+  if (locked && !locked.includes(so.branch ?? "")) {
     const { data: dos } = await supabase
       .from("delivery_orders")
       .select("id, do_sales_orders!inner(so_id)")

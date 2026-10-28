@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { branchName, lockedBranch } from "@/lib/branches";
+import { branchName, lockedBranches } from "@/lib/branches";
 import { addDays, dateRange, fmtTime, mapAddress, todayMY } from "@/lib/format";
 import { startedTimes } from "@/lib/delivery-times";
 import { commissionForDay, withTripPoints } from "@/lib/commission";
@@ -25,10 +25,10 @@ export default async function TripFormPage({
   const to = sp.to && sp.to >= from ? sp.to : from;
   const dates = dateRange(from, to, MAX_DAYS);
 
-  // Dispatchers only see their own branch's drivers.
-  const locked = lockedBranch(profile);
+  // Dispatchers only see their own branches' drivers.
+  const locked = lockedBranches(profile);
   let q = supabase.from("profiles").select("id, full_name, branch").eq("role", "driver").order("full_name");
-  if (locked) q = q.eq("branch", locked);
+  if (locked) q = q.in("branch", locked);
   const drivers = ((await q).data ?? []) as Pick<Profile, "id" | "full_name" | "branch">[];
   const driver = drivers.find((d) => d.id === sp.driver) ?? drivers[0];
 

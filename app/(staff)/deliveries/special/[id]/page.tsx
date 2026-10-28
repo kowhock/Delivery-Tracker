@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
-import { lockedBranch } from "@/lib/branches";
+import { lockedBranches } from "@/lib/branches";
 import { deleteSpecialDo, updateSpecialDo } from "@/app/actions";
 import { SpecialDoForm } from "@/components/SpecialDoForm";
 import type { DeliveryOrder, Profile } from "@/lib/types";
@@ -38,7 +38,7 @@ export default async function EditSpecialDoPage({ params }: { params: Promise<{ 
           action={updateSpecialDo.bind(null, job.id)}
           onDelete={deleteSpecialDo.bind(null, job.id)}
           drivers={drivers}
-          lockedTo={lockedBranch(profile)}
+          lockedTo={lockedBranches(profile)}
           submitLabel="Save changes"
           values={job}
         />

@@ -59,11 +59,23 @@ export function branchName(code: string | null | undefined): string {
 }
 
 /**
+ * A user's branches. profiles.branch holds one code ("KS") or several ("KS,MS"),
+ * set by an admin on the Users page.
+ */
+export function userBranches(branch: string | null | undefined): string[] {
+  return (branch ?? "").split(",").map((b) => b.trim().toUpperCase()).filter(Boolean);
+}
+
+/**
  * Which branch a staff page shows. No ?branch= in the URL → the user's own
- * branch; ?branch=all → every branch (returns ""); otherwise that branch.
+ * branch (all of theirs when they have several: returns ""); ?branch=all → every
+ * branch (returns ""); otherwise that branch.
  */
 export function pickBranch(param: string | undefined, own: string | null): string {
-  if (param === undefined) return own ?? "";
+  if (param === undefined) {
+    const mine = userBranches(own);
+    return mine.length === 1 ? mine[0] : "";
+  }
   return param === "all" ? "" : param;
 }
 
@@ -72,17 +84,41 @@ export function pickBranch(param: string | undefined, own: string | null): strin
  * branch (e.g. head office) can plan any DO, and so can anyone for a DO with no branch.
  */
 export function canPlan(userBranch: string | null | undefined, doBranch: string | null | undefined): boolean {
-  return !userBranch || !doBranch || userBranch === doBranch;
+  const mine = userBranches(userBranch);
+  return !mine.length || !doBranch || mine.includes(doBranch);
 }
 
 /**
- * Dispatchers with a branch only ever see that branch: DOs it delivers, plus
- * DOs its agents sold that another branch delivers. Admins (and staff without
- * a branch) see every branch. Returns the branch they're kept to, or null.
+ * Dispatchers with branches only ever see those: DOs they deliver, plus DOs
+ * their agents sold that another branch delivers. Admins (and staff without
+ * a branch) see every branch. Returns the branches they're kept to, or null.
  */
-export function lockedBranch(profile: { role: string; branch: string | null }): string | null {
-  return profile.role === "dispatcher" && profile.branch ? profile.branch : null;
+export function lockedBranches(profile: { role: string; branch: string | null }): string[] | null {
+  const mine = userBranches(profile.branch);
+  return profile.role === "dispatcher" && mine.length ? mine : null;
 }
 
-/** PostgREST filter for "this branch delivers it or sold it". */
-export const deliveredOrSoldBy = (branch: string) => `branch.eq.${branch},sales_branch.eq.${branch}`;
+/**
+ * pickBranch, kept inside a dispatcher's branches: one of theirs, or "" for all
+ * of theirs (the page then filters on lockedBranches).
+ */
+export function pageBranch(param: string | undefined, profile: { role: string; branch: string | null }): string {
+  const locked = lockedBranches(profile);
+  const picked = pickBranch(param, profile.branch);
+  if (!locked) return picked;
+  if (locked.length === 1) return locked[0];
+  return locked.includes(picked) ? picked : "";
+}
+
+/** The branch a lorry / special DO is saved under: dispatchers only get one of theirs (the one picked, else their first). */
+export function branchToSave(profile: { role: string; branch: string | null }, picked: string | null): string | null {
+  const locked = lockedBranches(profile);
+  if (!locked) return picked;
+  return picked && locked.includes(picked) ? picked : locked[0];
+}
+
+/** PostgREST filter for "one of these branches delivers it or sold it". */
+export const deliveredOrSoldBy = (branches: string | string[]) => {
+  const list = ([] as string[]).concat(branches).join(",");
+  return `branch.in.(${list}),sales_branch.in.(${list})`;
+};

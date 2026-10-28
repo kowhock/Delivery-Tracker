@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { resendDeliveredNotice } from "@/app/actions";
 import { waApiEnabled } from "@/lib/whatsapp-api";
-import { branchName, lockedBranch } from "@/lib/branches";
+import { branchName, lockedBranches } from "@/lib/branches";
 import { splitDocNos } from "@/lib/autocount-rows";
 import { DoBadge, SoBadge } from "@/components/StatusBadge";
 import { driverLabel, fmtDate, fmtDateTime, fmtMoney, fmtQty } from "@/lib/format";
@@ -42,9 +42,10 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
 
   const lines = (items ?? []) as Item[];
   const deliveries = (dos ?? []) as DeliveryOrder[];
-  // Dispatchers: their branch's SOs, or SOs with a DO their branch delivers or sold.
-  const locked = lockedBranch(profile);
-  if (locked && so.branch !== locked && !deliveries.some((d) => d.branch === locked || d.sales_branch === locked)) notFound();
+  // Dispatchers: their branches' SOs, or SOs with a DO their branches deliver or sold.
+  const locked = lockedBranches(profile);
+  const theirs = (b: string | null) => !!b && !!locked?.includes(b);
+  if (locked && !theirs(so.branch) && !deliveries.some((d) => theirs(d.branch) || theirs(d.sales_branch))) notFound();
   const doNoById = new Map(deliveries.map((d) => [d.id, d.do_no]));
   const timeline = (events ?? []) as unknown as StatusEvent[];
   // DOs AutoCount says this SO went to, but whose DO file hasn't been imported yet.
