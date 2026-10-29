@@ -7,7 +7,7 @@ import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
 import { branchFromDoNo, branchToSave, canPlan } from "@/lib/branches";
 import { TIME_SLOTS, type DoStatus } from "@/lib/types";
-import { notYourBranch } from "./_shared";
+import { nextTrip, notYourBranch } from "./_shared";
 
 // ---------- Delivery orders (staff) ----------------------------------
 
@@ -30,6 +30,7 @@ export async function createSpecialDo(formData: FormData) {
       delivery_date: date,
       branch: branchToSave(profile, get("branch")), // dispatchers always create for one of their own branches
       driver_id: driverId,
+      ...(driverId ? { trip_no: await nextTrip(supabase, driverId, date) } : {}),
       status: driverId ? "assigned" : "pending",
       instructions: get("instructions"),
       points,
@@ -55,7 +56,7 @@ async function ownSpecialDo(id: string) {
   const s = await requireStaff();
   const { data: d } = await s.supabase
     .from("delivery_orders")
-    .select("id, do_no, source, status, driver_id, created_by")
+    .select("id, do_no, source, status, driver_id, delivery_date, created_by")
     .eq("id", id)
     .single();
   if (!d || d.source !== "special") throw new Error("Special DO not found.");
@@ -75,6 +76,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
 
   // A new driver (or none) resets the status like Assign does; same driver keeps it.
   const driverChanged = driverId !== d.driver_id;
+  const newTrip = driverId && (driverChanged || date !== d.delivery_date) ? { trip_no: await nextTrip(supabase, driverId, date, id), trip_seq: 0 } : {};
   const { error } = await supabase
     .from("delivery_orders")
     .update({
@@ -85,6 +87,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       branch: branchToSave(profile, get("branch")),
       driver_id: driverId,
       ...(driverChanged ? { status: driverId ? "assigned" : "pending", failed_reason: null } : {}),
+      ...newTrip,
       instructions: get("instructions"),
       points,
       points_manual: true,
@@ -199,16 +202,31 @@ export async function assignDriver(formData: FormData) {
   const driverId = oc ? null : String(formData.get("driver_id") || "") || null;
   const date = String(formData.get("delivery_date") || "") || undefined;
 
-  const { data: current } = await supabase.from("delivery_orders").select("so_id, status, branch").eq("id", doId).single();
+  const { data: current } = await supabase
+    .from("delivery_orders")
+    .select("so_id, status, branch, driver_id, delivery_date")
+    .eq("id", doId)
+    .single();
   if (!current) return;
   if (!canPlan(profile.branch, current.branch)) throw new Error(notYourBranch(current.branch));
 
   let status: DoStatus = current.status;
   if (["pending", "assigned", "failed"].includes(current.status)) status = driverId ? "assigned" : "pending";
 
+  // New driver or day → a trip of its own after the driver's last one; same driver and day keeps its trip.
+  const day = date ?? current.delivery_date;
+  const tripNo = driverId && (driverId !== current.driver_id || day !== current.delivery_date) ? await nextTrip(supabase, driverId, day, doId) : null;
+
   await supabase
     .from("delivery_orders")
-    .update({ driver_id: driverId, status, failed_reason: null, own_collection: oc, ...(date ? { delivery_date: date } : {}) })
+    .update({
+      driver_id: driverId,
+      status,
+      failed_reason: null,
+      own_collection: oc,
+      ...(date ? { delivery_date: date } : {}),
+      ...(tripNo ? { trip_no: tripNo, trip_seq: 0 } : {}),
+    })
     .eq("id", doId);
 
   let driverName = "nobody";
@@ -220,10 +238,12 @@ export async function assignDriver(formData: FormData) {
     so_id: current.so_id,
     do_id: doId,
     status,
-    note: oc ? "Marked O/C (customer collects)" : driverId ? `Assigned to ${driverName}` : "Unassigned",
+    note: oc ? "Marked O/C (customer collects)" : driverId ? `Assigned to ${driverName}${tripNo ? ` · Trip ${tripNo}` : ""}` : "Unassigned",
   });
 
   revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
   revalidatePath("/orders/[id]", "page"); // a DO can belong to several SOs
 }
 
@@ -289,18 +309,7 @@ export async function redeliver(doId: string) {
 
   const today = todayMY();
   const date = d.delivery_date < today ? today : d.delivery_date;
-  let trip = 1;
-  if (d.driver_id && date === d.delivery_date) {
-    const { data: last } = await supabase
-      .from("delivery_orders")
-      .select("trip_no")
-      .eq("driver_id", d.driver_id)
-      .eq("delivery_date", date)
-      .order("trip_no", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    trip = (last?.trip_no ?? 0) + 1;
-  }
+  const trip = d.driver_id && date === d.delivery_date ? await nextTrip(supabase, d.driver_id, date) : 1;
   const status: DoStatus = d.driver_id ? "assigned" : "pending";
   const { error } = await supabase
     .from("delivery_orders")
