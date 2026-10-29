@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { markDelivered, markFailed, startDelivery } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
@@ -108,10 +108,12 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
           </div>
         )}
 
-        {mode === "deliver" && <DeliverForm t={t} pending={pending} onCancel={() => setMode("idle")} onSubmit={(file, note) =>
+        {mode === "deliver" && <DeliverForm t={t} pending={pending} onCancel={() => setMode("idle")} onSubmit={(files, note) =>
           run(async () => {
-            const path = file ? await uploadPhoto(job.id, file) : null;
-            await markDelivered(job.id, path, note);
+            // All photos go up together; the first is the one the customer gets on WhatsApp.
+            const stamp = Date.now();
+            const paths = await Promise.all(files.map((f, i) => uploadPhoto(`${job.id}/${stamp}-${i}.jpg`, f)));
+            await markDelivered(job.id, paths[0] ?? null, note);
           })} />}
 
         {mode === "fail" && <FailForm t={t} pending={pending} onCancel={() => setMode("idle")} onSubmit={(reason) => run(() => markFailed(job.id, reason))} />}
@@ -132,19 +134,58 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
   );
 }
 
-function DeliverForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boolean; onCancel: () => void; onSubmit: (f: File | null, note: string) => void }) {
-  const [file, setFile] = useState<File | null>(null);
+const MAX_PHOTOS = 6;
+
+function DeliverForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boolean; onCancel: () => void; onSubmit: (files: File[], note: string) => void }) {
+  const [files, setFiles] = useState<File[]>([]);
   const [note, setNote] = useState("");
+  // Small previews so the driver can see what they took (and remove a bad one).
+  const [previews, setPreviews] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
   return (
     <div className="space-y-3">
-      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
-        📷 {file ? file.name : t.takePhoto}
-        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      </label>
+      {previews.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {previews.map((url, i) => (
+            <div key={url} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local preview of the photo just taken */}
+              <img src={url} alt="" className="aspect-square w-full rounded-lg border border-slate-200 object-cover" />
+              <button
+                type="button"
+                onClick={() => setFiles(files.filter((_, k) => k !== i))}
+                aria-label="Remove photo"
+                className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-black/60 text-xs text-white"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {files.length < MAX_PHOTOS && (
+        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
+          📷 {files.length ? t.addPhoto : t.takePhoto}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              const picked = [...(e.target.files ?? [])];
+              e.target.value = ""; // so the same photo can be picked again after removing it
+              setFiles((f) => [...f, ...picked].slice(0, MAX_PHOTOS));
+            }}
+          />
+        </label>
+      )}
       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.receivedBy} className="input" />
       <div className="grid grid-cols-2 gap-2">
         <button onClick={onCancel} className="btn-neutral">{t.cancel}</button>
-        <button disabled={pending} onClick={() => onSubmit(file, note)} className="btn-kh">{pending ? t.saving : t.confirm}</button>
+        <button disabled={pending} onClick={() => onSubmit(files, note)} className="btn-kh">{pending ? t.saving : t.confirm}</button>
       </div>
     </div>
   );
@@ -169,10 +210,9 @@ function FailForm({ t, pending, onCancel, onSubmit }: { t: Dict; pending: boolea
   );
 }
 
-/** Shrinks the photo (saves drivers' mobile data) and uploads it to the "pod" bucket. */
-async function uploadPhoto(doId: string, file: File): Promise<string> {
+/** Shrinks the photo (saves drivers' mobile data) and uploads it to the "pod" bucket at `path` ("<do id>/….jpg"). */
+async function uploadPhoto(path: string, file: File): Promise<string> {
   const blob = await shrinkImage(file);
-  const path = `${doId}/${Date.now()}.jpg`;
   const { error } = await createClient().storage.from("pod").upload(path, blob, { contentType: "image/jpeg" });
   if (error) throw new Error("Photo upload failed: " + error.message);
   return path;

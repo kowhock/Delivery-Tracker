@@ -12,6 +12,7 @@ import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
 import { OcCollect } from "@/components/OcCollect";
 import { Redeliver } from "@/components/Redeliver";
+import { LinkSpecialDo } from "@/components/LinkSpecialDo";
 import { NavForm, NavLink, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -289,18 +290,24 @@ export default async function DeliveriesPage({
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
                             <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path} />
                           </span>
-                          <BranchTags job={j} />
+                          <span className="flex items-center gap-2">
+                            {j.source === "special" && !j.special_no && (j.created_by === user.id || profile.role === "admin") && PLANNABLE.includes(j.status) && (
+                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Edit</Link>
+                            )}
+                            <BranchTags job={j} />
+                          </span>
                         </div>
                         {j.is_oc && <p className="-mt-1.5 text-xs font-medium text-violet-600">O/C (customer collects)</p>}
                         {(j.links?.length || j.so_no) && (
                           <p className="-mt-1.5 text-xs text-slate-400">{j.links?.length ? j.links.map((l) => l.so_no).join(", ") : j.so_no}</p>
                         )}
-                        {j.source === "special" && (
-                          <p className="-mt-1.5 flex items-center gap-2 text-xs text-slate-400">
+                        {j.special_no ? (
+                          <p className="-mt-1.5 text-xs text-slate-400">🔗 Was special DO {j.special_no}</p>
+                        ) : j.source === "special" && (
+                          <p className="-mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-400">
                             Special
-                            {(j.created_by === user.id || profile.role === "admin") && PLANNABLE.includes(j.status) && (
-                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Edit</Link>
-                            )}
+                            {/* AutoCount was down: once it has the real DO, link it so syncs update this one. */}
+                            {(j.created_by === user.id || profile.role === "admin" || mine) && <LinkSpecialDo doId={j.id} doNo={j.do_no} />}
                           </p>
                         )}
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
-import { branchToSave, canPlan } from "@/lib/branches";
+import { branchFromDoNo, branchToSave, canPlan } from "@/lib/branches";
 import { TIME_SLOTS, type DoStatus } from "@/lib/types";
 import { notYourBranch } from "./_shared";
 
@@ -108,6 +108,29 @@ export async function deleteSpecialDo(id: string) {
   revalidatePath("/drivers");
   revalidatePath("/driver");
   redirect("/deliveries");
+}
+
+/**
+ * Special DO keyed in while AutoCount was down → the real AutoCount DO number. The special DO
+ * takes that number, so AutoCount syncs update it from now on; if the sync already brought the
+ * DO in as a separate card, that card is merged into it (see link_special_do in upgrade.sql).
+ */
+export async function linkSpecialDo(id: string, doNo: string) {
+  const { supabase, user, profile } = await requireStaff();
+  const no = doNo.trim().toUpperCase();
+  if (!branchFromDoNo(no)) throw new Error(`"${doNo}" isn't an AutoCount DO number (e.g. GPD-00045135).`);
+  const { data: d } = await supabase.from("delivery_orders").select("do_no, so_id, source, branch, created_by").eq("id", id).single();
+  if (!d || d.source !== "special") throw new Error("Special DO not found.");
+  if (d.created_by !== user.id && profile.role !== "admin" && !canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+
+  const { error } = await supabase.rpc("link_special_do", { p_special: id, p_do_no: no });
+  if (error) throw new Error(error.message);
+
+  await supabase.from("status_events").insert({ so_id: d.so_id, do_id: id, status: "linked", note: `${d.do_no} linked to AutoCount DO ${no}` });
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  revalidatePath("/orders/[id]", "page");
 }
 
 /** Office keys in a DO's points (e.g. the address couldn't be found). null = go back to the distance rule. */

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrl } from "@/app/actions";
+import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrls } from "@/app/actions";
 import { fmtDateTime, fmtQty } from "@/lib/format";
 import { EVENT_LABEL, TODO_LABEL, todoLabel, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent } from "@/lib/types";
 
@@ -58,7 +58,7 @@ export function DoOutstanding({
   const [isOpen, setOpen] = useState(false);
   const [items, setItems] = useState<DoItem[] | null>(null);
   const [events, setEvents] = useState<StatusEvent[] | null>(null);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [adding, setAdding] = useState(false);
 
@@ -67,10 +67,10 @@ export function DoOutstanding({
     setState("loading");
     try {
       // Items don't change; history and the photo link (it expires) are fetched fresh on every open.
-      const [i, h, p] = await Promise.all([items ?? getDoItems(doId), history ? getDoHistory(doId) : null, photo ? getPodPhotoUrl(doId) : null]);
+      const [i, h, p] = await Promise.all([items ?? getDoItems(doId), history ? getDoHistory(doId) : null, photo ? getPodPhotoUrls(doId) : []]);
       setItems(i);
       setEvents(h);
-      setPhotoUrl(p);
+      setPhotoUrls(p);
       setState("idle");
     } catch {
       setState("error");
@@ -112,12 +112,16 @@ export function DoOutstanding({
               {open.length > 0 && <OpenList open={open} />}
               {photo && (
                 <div>
-                  <h3 className="mb-1 font-semibold">Proof of delivery</h3>
-                  {photoUrl ? (
-                    <a href={photoUrl} target="_blank" rel="noreferrer" title="Open full size">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- signed Supabase link, not a static asset */}
-                      <img src={photoUrl} alt={`Delivery photo for ${doNo}`} className="max-h-80 w-full rounded-xl border border-slate-100 object-contain" />
-                    </a>
+                  <h3 className="mb-1 font-semibold">Proof of delivery{photoUrls.length > 1 && ` · ${photoUrls.length} photos`}</h3>
+                  {photoUrls.length ? (
+                    <div className="space-y-2">
+                      {photoUrls.map((url, i) => (
+                        <a key={url} href={url} target="_blank" rel="noreferrer" title="Open full size" className="block">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- signed Supabase link, not a static asset */}
+                          <img src={url} alt={`Delivery photo ${i + 1} for ${doNo}`} loading="lazy" className="max-h-80 w-full rounded-xl border border-slate-100 object-contain" />
+                        </a>
+                      ))}
+                    </div>
                   ) : (
                     state === "loading" ? <p className="text-slate-500">Loading photo…</p> : state === "idle" && <p className="text-slate-500">Photo not found.</p>
                   )}

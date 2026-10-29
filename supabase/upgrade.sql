@@ -199,3 +199,49 @@ where e.status = 'failed'
   and not exists (
     select 1 from public.delivery_attempts a
     where a.do_id = e.do_id and a.failed_at between e.created_at - interval '1 minute' and e.created_at + interval '1 minute');
+
+-- ---------- Special DO → its AutoCount DO -----------------------------------
+-- When AutoCount is down the office keys in a special DO (SDO-…). Once AutoCount is back
+-- and has the real DO, the special DO takes the AutoCount number, so every sync from then
+-- on updates it (driver, status, photos, points and history stay). special_no = the SDO-… it had.
+alter table public.delivery_orders add column if not exists special_no text;
+
+-- If the sync already brought the AutoCount DO in as its own card, that card (not started yet)
+-- is folded in: its items, SO links, history and notes move over, then it's removed.
+-- All in one go: if anything fails nothing changes. Runs as the caller (staff only, by RLS).
+create or replace function public.link_special_do(p_special uuid, p_do_no text) returns void
+language plpgsql set search_path = '' as $$
+declare
+  sp  public.delivery_orders;
+  dup public.delivery_orders;
+begin
+  select * into sp from public.delivery_orders where id = p_special for update;
+  if sp.id is null or sp.source <> 'special' then raise exception 'Special DO not found.'; end if;
+
+  select * into dup from public.delivery_orders where upper(do_no) = upper(p_do_no) and id <> p_special for update;
+  if dup.id is not null then
+    if dup.status not in ('pending', 'assigned') then
+      raise exception '% is already out for delivery or delivered — it can''t be merged into %.', dup.do_no, sp.do_no;
+    end if;
+    -- AutoCount's items and SO links win; history, notes and any failed tries are kept from both.
+    delete from public.do_items where do_id = sp.id;
+    update public.do_items set do_id = sp.id where do_id = dup.id;
+    delete from public.do_sales_orders where do_id = sp.id;
+    update public.do_sales_orders set do_id = sp.id where do_id = dup.id;
+    update public.status_events set do_id = sp.id where do_id = dup.id;
+    update public.do_outstanding set do_id = sp.id where do_id = dup.id;
+    update public.delivery_attempts set do_id = sp.id where do_id = dup.id;
+    delete from public.delivery_orders where id = dup.id;
+    update public.delivery_orders set
+      so_id = dup.so_id, so_no = dup.so_no, customer_name = dup.customer_name, address = dup.address,
+      contact_phone = coalesce(sp.contact_phone, dup.contact_phone), remarks = dup.remarks,
+      branch = dup.branch, sales_branch = dup.sales_branch, ref = dup.ref, total = dup.total,
+      invoice_no = dup.invoice_no, created_user = dup.created_user, cancelled = dup.cancelled
+    where id = sp.id;
+  end if;
+
+  update public.delivery_orders
+  set do_no = upper(trim(p_do_no)), special_no = sp.do_no, source = case when dup.id is null then source else 'autocount' end
+  where id = sp.id;
+end $$;
+grant execute on function public.link_special_do(uuid, text) to authenticated;

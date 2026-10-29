@@ -8,6 +8,7 @@ import { splitDocNos } from "@/lib/autocount-rows";
 import { DoBadge, SoBadge } from "@/components/StatusBadge";
 import { driverLabel, fmtDate, fmtDateTime, fmtMoney, fmtQty } from "@/lib/format";
 import { EVENT_LABEL, TIME_SLOTS, type DeliveryOrder, type DoStatus, type TimeSlot, type SalesOrder, type StatusEvent } from "@/lib/types";
+import { podPhotoUrls } from "@/lib/pod";
 
 type Item = { id: string; item_code: string; description: string | null; uom: string | null; qty: number };
 
@@ -52,12 +53,10 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
   const notImported = splitDocNos(so.transfer_to).filter((no) => !deliveries.some((d) => d.do_no === no));
 
   // Signed links (valid 1 hour) for proof-of-delivery photos
-  const photoUrls: Record<string, string> = {};
-  for (const d of deliveries) {
-    if (!d.pod_photo_path) continue;
-    const { data } = await supabase.storage.from("pod").createSignedUrl(d.pod_photo_path, 3600);
-    if (data) photoUrls[d.id] = data.signedUrl;
-  }
+  const photoUrls: Record<string, string[]> = {};
+  await Promise.all(
+    deliveries.filter((d) => d.pod_photo_path).map(async (d) => (photoUrls[d.id] = await podPhotoUrls(supabase, d.id, d.pod_photo_path)))
+  );
 
   return (
     <div className="space-y-6">
@@ -178,11 +177,15 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
                       <button className="text-brand-700 hover:underline">{d.wa_sent_at ? "Send again" : "Retry"}</button>
                     </form>
                   )}
-                  {photoUrls[d.id] && (
-                    <a href={photoUrls[d.id]} target="_blank" className="mt-3 inline-block">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={photoUrls[d.id]} alt="Proof of delivery" className="h-24 rounded-lg border border-slate-200 object-cover" />
-                    </a>
+                  {!!photoUrls[d.id]?.length && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {photoUrls[d.id].map((url, i) => (
+                        <a key={url} href={url} target="_blank">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={url} alt={`Proof of delivery ${i + 1}`} className="h-24 rounded-lg border border-slate-200 object-cover" />
+                        </a>
+                      ))}
+                    </div>
                   )}
                 </div>
               );

@@ -79,6 +79,7 @@ export type DeliveryOrder = {
   created_user: string | null;
   cancelled: boolean;
   source: string; // autocount | special
+  special_no: string | null; // the SDO-… number it had before it was linked to its AutoCount DO
   instructions: string | null; // office → driver
   points: number | null; // commission points; null = office must key in
   points_manual: boolean;
@@ -116,6 +117,7 @@ export const EVENT_LABEL: Record<string, string> = {
   do_created: "DO created",
   points: "Points changed",
   trip: "Trip arranged",
+  linked: "Linked to AutoCount DO",
   ...DO_STATUS_LABEL,
 };
 
