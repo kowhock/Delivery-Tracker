@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { driverLabel, fmtDate, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
+import { driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
@@ -10,6 +10,7 @@ import { SyncAge } from "@/components/SyncAge";
 import { BranchTags } from "@/components/DocLinks";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
+import { OcCollect } from "@/components/OcCollect";
 import { NavForm, NavLink, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -20,10 +21,12 @@ const COLUMN_DOT: Record<DoStatus, string> = {
   failed: "bg-rose-500",
 };
 
+// Failed DOs only show under their own filter, so the other columns get the room.
 const DELIVERY_FILTERS = {
-  "": { label: "All", statuses: DO_STATUSES },
-  undelivered: { label: "Not delivered", statuses: DO_STATUSES.filter((s) => s !== "delivered") },
+  "": { label: "All", statuses: DO_STATUSES.filter((s) => s !== "failed") },
+  undelivered: { label: "Not delivered", statuses: DO_STATUSES.filter((s) => s !== "delivered" && s !== "failed") },
   delivered: { label: "Delivered", statuses: ["delivered"] as DoStatus[] },
+  failed: { label: "Failed", statuses: ["failed"] as DoStatus[] },
 };
 type DeliveryFilter = keyof typeof DELIVERY_FILTERS;
 
@@ -33,7 +36,7 @@ const MAX_LOADED = 3000;
 const PLANNABLE: DoStatus[] = ["pending", "assigned", "failed"];
 
 
-const GRID_COLS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5"];
+const GRID_COLS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5", "lg:grid-cols-6"];
 
 const TAB = "rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap";
 const TAB_ON = "bg-white text-slate-900 shadow-sm";
@@ -79,8 +82,8 @@ export default async function DeliveriesPage({
   // it's usually an older DO someone is asking about.
   // The page's filters, used for the cards and for the delivered count.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q): Q => {
-    query = query.eq("cancelled", false).in("status", statuses);
+  const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses): Q => {
+    query = query.eq("cancelled", false).in("status", st);
     if (!showOc) query = query.eq("is_oc", false);
     if (locked) query = query.or(deliveredOrSoldBy(locked));
     if (term) query = query.ilike("do_no", `%${term}%`);
@@ -96,7 +99,7 @@ export default async function DeliveriesPage({
 
   // Long ranges ("All dates") load the newest PAGE DOs; "Load more" adds the next PAGE.
   const limit = Math.min(Math.max(Number(sp.n) || PAGE, PAGE), MAX_LOADED);
-  const [{ data, count }, { data: driverRows }, { data: sync }] = await Promise.all([
+  const [{ data, count }, { data: driverRows }, { data: sync }, { count: failedCount }] = await Promise.all([
     filtered(
       supabase
         .from("delivery_orders")
@@ -111,6 +114,8 @@ export default async function DeliveriesPage({
       .range(0, limit - 1),
     supabase.from("profiles").select("id, full_name, lorry_no, branch").eq("role", "driver").order("full_name"),
     supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle(),
+    // Failed DOs are hidden from the other filters; their count goes on the Failed tab so none get missed.
+    filtered(supabase.from("delivery_orders").select("id", { count: "exact", head: true }), ["failed"]),
   ]);
   // Newest were fetched first; cards still read oldest → newest.
   const jobs = await withStartedAt(supabase, ((data ?? []) as DeliveryOrder[]).reverse());
@@ -126,6 +131,14 @@ export default async function DeliveriesPage({
     const own = drivers.filter((d) => !!b && userBranches(d.branch).includes(b));
     return own.length ? own : drivers;
   };
+
+  // O/C DOs get a column of their own (not Unassigned); still to collect first, collected ones below.
+  const columns = [
+    ...statuses.map((s) => ({ key: s, label: DO_STATUS_LABEL[s], dot: COLUMN_DOT[s], jobs: jobs.filter((j) => !j.is_oc && j.status === s) })),
+    ...(showOc
+      ? [{ key: "oc", label: "O/C (customer collects)", dot: "bg-violet-500", jobs: jobs.filter((j) => j.is_oc).sort((a, b) => Number(a.status === "delivered") - Number(b.status === "delivered")) }]
+      : []),
+  ];
 
   const isToday = from === today && to === today;
   const [weekFrom, weekTo] = weekRange(today);
@@ -183,6 +196,9 @@ export default async function DeliveriesPage({
               className={`${TAB} ${show === value ? TAB_ON : TAB_OFF}`}
             >
               {DELIVERY_FILTERS[value].label}
+              {value === "failed" && !!failedCount && (
+                <span className="ml-1 rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{failedCount}</span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -249,14 +265,13 @@ export default async function DeliveriesPage({
       </div>
 
       <PendingDim>
-        <div className={`-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 lg:mx-0 lg:grid ${GRID_COLS[statuses.length]} lg:overflow-visible lg:px-0`}>
-          {statuses.map((s) => {
-            const col = jobs.filter((j) => j.status === s);
+        <div className={`-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 lg:mx-0 lg:grid ${GRID_COLS[columns.length]} lg:overflow-visible lg:px-0`}>
+          {columns.map(({ key, label, dot, jobs: col }) => {
             return (
-              <section key={s} className="w-72 shrink-0 snap-start rounded-2xl bg-slate-100/70 p-2 lg:w-auto">
+              <section key={key} className="w-72 shrink-0 snap-start rounded-2xl bg-slate-100/70 p-2 lg:w-auto">
                 <h2 className="flex items-center gap-2 px-2 py-2 text-sm font-semibold text-slate-700">
-                  <span className={`size-2 rounded-full ${COLUMN_DOT[s]}`} />
-                  {DO_STATUS_LABEL[s]}
+                  <span className={`size-2 rounded-full ${dot}`} />
+                  {label}
                   <span className="ml-auto rounded-full bg-white px-2 text-xs font-medium text-slate-500">{col.length}</span>
                 </h2>
                 <div className="space-y-2">
@@ -290,7 +305,7 @@ export default async function DeliveriesPage({
                         {mapAddress(j) && <p className="text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
-                        {(j.started_at || (j.status === "delivered" && j.delivered_at)) && (
+                        {!j.is_oc && (j.started_at || (j.status === "delivered" && j.delivered_at)) && (
                           <p className="text-xs font-medium text-slate-600">
                             ⏱ {j.started_at && `Out ${fmtTime(j.started_at)}`}
                             {j.started_at && j.status === "delivered" && j.delivered_at && " · "}
@@ -303,7 +318,21 @@ export default async function DeliveriesPage({
                             ⚠ <span className="font-medium">{todoLabel(o)}</span> · {o.reason}
                           </p>
                         ))}
-                        {plannable ? (
+                        {j.is_oc && mine ? (
+                          <div className="space-y-1.5">
+                            <OcCollect key={`${j.status}-${j.delivered_at}`} doId={j.id} collectedAt={j.status === "delivered" ? (j.delivered_at ?? j.created_at) : null} />
+                            {/* No delivery date for O/C; picking a driver makes it a delivery, and its card then has the date. */}
+                            {plannable && (
+                              <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
+                            )}
+                          </div>
+                        ) : j.is_oc ? (
+                          <div className="space-y-0.5 text-xs text-slate-500">
+                            <p>{j.status === "delivered" ? <span className="font-medium text-emerald-700">✅ Collected {j.delivered_at && fmtDateTime(j.delivered_at)}</span> : "🏬 Waiting for customer to collect"}</p>
+                            <p className={late ? "text-rose-600" : ""}>📅 {fmtDate(j.delivery_date)}{late && " · late"}</p>
+                            <p className="text-slate-400">{branchName(j.branch)} ({j.branch}) handles this O/C</p>
+                          </div>
+                        ) : plannable ? (
                           <div className="space-y-1.5">
                             <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
                             <DoDate doId={j.id} date={j.delivery_date} today={today} />

@@ -248,6 +248,40 @@ export async function moveToDate(doIds: string[], date: string) {
   return { moved: rows.length, skipped: doIds.length - rows.length };
 }
 
+/**
+ * O/C: the customer collected at the store. Counts as delivered (no driver, so no commission).
+ * `at` = when ("2026-10-29T15:30", Malaysia time); null = now. collected = false undoes it.
+ */
+export async function setCollected(doId: string, collected: boolean, at: string | null = null) {
+  const { supabase, profile } = await requireStaff();
+  const { data: d } = await supabase.from("delivery_orders").select("so_id, status, branch, is_oc").eq("id", doId).single();
+  if (!d) throw new Error("DO not found.");
+  if (!d.is_oc) throw new Error("Only O/C DOs can be marked collected.");
+  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+
+  let when: string | null = null;
+  if (collected && at) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at)) throw new Error("Pick when it was collected.");
+    when = new Date(`${at}:00+08:00`).toISOString();
+    if (when > new Date().toISOString()) throw new Error("Collection time can't be in the future.");
+  }
+
+  const update = collected ? { status: "delivered", failed_reason: null } : { status: "pending", delivered_at: null };
+  const { error } = await supabase.from("delivery_orders").update(update).eq("id", doId);
+  if (error) throw new Error(error.message);
+  // The database stamps delivered_at with now(); a picked time replaces it afterwards.
+  if (when) await supabase.from("delivery_orders").update({ delivered_at: when }).eq("id", doId);
+
+  await supabase.from("status_events").insert({
+    so_id: d.so_id,
+    do_id: doId,
+    status: collected ? "delivered" : "pending",
+    note: collected ? "Collected by customer (O/C)" : "O/C collection undone",
+  });
+  revalidatePath("/deliveries");
+  revalidatePath("/orders/[id]", "page");
+}
+
 /** Optional estimated delivery window for a DO (e.g. 1–3pm). null = no estimate. */
 export async function setTimeSlot(doId: string, slot: string | null) {
   const { supabase, profile } = await requireStaff();
