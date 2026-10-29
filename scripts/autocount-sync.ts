@@ -3,7 +3,7 @@
  * Inter-company invoices (M-PT-…) are delivered like DOs, so they're synced as DOs too.
  * Runs on a computer in the office network (the AutoCount API is at a 192.168.x.x address).
  *
- *   npm run autocount:sync -- --days 14   one time: DOs dated in the last 14 days (backfill)
+ *   npm run autocount:sync -- --days 14   one time: DOs dated in the last 14 days, day by day (backfill)
  *   npm run autocount:sync                keeps running: every 5 minutes, DOs changed since the last run
  *
  * Signs in to Supabase as the staff user in SUPABASE_SYNC_EMAIL / SUPABASE_SYNC_PASSWORD.
@@ -83,9 +83,21 @@ async function main() {
   const i = process.argv.indexOf("--days");
   if (i > 0) {
     const days = Number(process.argv[i + 1]);
-    const filter = { DateFrom: dayMY(days * 864e5), DateTo: dayMY() };
-    log(`One-time sync: documents dated ${filter.DateFrom} – ${filter.DateTo} (this can take a while)`);
-    await syncOnce(filter);
+    log(`One-time sync: documents dated ${dayMY(days * 864e5)} – ${dayMY()}, one day at a time (this can take a while)`);
+    // One day per run: AutoCount gets slower the further into a long result it pages (invoice pages
+    // went past the 5-minute timeout), and each finished day is saved even if a later one fails.
+    const failed: string[] = [];
+    for (let d = days; d >= 0; d--) {
+      const day = dayMY(d * 864e5);
+      log(`--- ${day} ---`);
+      try {
+        await syncOnce({ DateFrom: day, DateTo: day });
+      } catch (e) {
+        failed.push(day);
+        log(`ERROR ${day}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    if (failed.length) throw new Error(`These days failed, run them again: ${failed.join(", ")}`);
     return;
   }
 
