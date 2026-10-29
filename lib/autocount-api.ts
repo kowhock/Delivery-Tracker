@@ -89,9 +89,8 @@ type ApiDoc = Record<string, unknown> & { DocNo: string };
 const str = (v: unknown) => (v == null || String(v).trim() === "" ? null : String(v).trim());
 const joinAddr = (r: ApiDoc) => [r.DeliverAddr1, r.DeliverAddr2, r.DeliverAddr3, r.DeliverAddr4].map(str).filter(Boolean).join(", ") || null;
 
-/** Reads every page. */
-async function selectAll(what: AcReadable, filter: AcSelectFilter): Promise<ApiDoc[]> {
-  const Limit = 100;
+/** Reads every page. Invoices come slower than DOs: 100 of them can take over 5 minutes, past the timeout. */
+async function selectAll(what: AcReadable, filter: AcSelectFilter, Limit = 100): Promise<ApiDoc[]> {
   const all = new Map<string, ApiDoc>();
   for (let page = 1; ; page++) {
     const t0 = Date.now();
@@ -140,7 +139,7 @@ export async function fetchAcDeliveryOrders(filter: AcSelectFilter): Promise<AcD
  * Every other invoice (GPI-, NBI-, …) is ignored.
  */
 export async function fetchAcIcbDeliveryOrders(filter: AcSelectFilter): Promise<AcDeliveryOrder[]> {
-  return (await selectAll("invoice", filter))
+  return (await selectAll("invoice", filter, 20))
     .filter((r) => r.DocNo.trim().toUpperCase().startsWith("M-") && branchFromDoNo(r.DocNo))
     .map(toDo);
 }

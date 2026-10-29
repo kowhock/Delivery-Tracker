@@ -11,6 +11,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { fetchAcDeliveryOrders, fetchAcIcbDeliveryOrders, type AcSelectFilter } from "../lib/autocount-api";
 import { importAcDeliveryOrders } from "../lib/autocount";
+import type { AcDeliveryOrder } from "../lib/autocount-rows";
 import { mapsEnabled, updateDistances } from "../lib/geo";
 
 const EVERY_MIN = 5;
@@ -39,15 +40,10 @@ const supabase = createClient(need("NEXT_PUBLIC_SUPABASE_URL"), need("NEXT_PUBLI
   auth: { persistSession: false, autoRefreshToken: true },
 });
 
-async function syncOnce(filter: AcSelectFilter) {
-  const t0 = Date.now();
-
-  log("Reading DOs from AutoCount…");
-  const dos = await fetchAcDeliveryOrders(filter);
-  log("Reading inter-company invoices (M-…) from AutoCount…");
-  const icb = await fetchAcIcbDeliveryOrders(filter);
-  const d = await importAcDeliveryOrders(supabase, [...dos, ...icb]);
-  log(`DO: ${dos.length} DOs + ${icb.length} inter-company invoices read, ${d.created.length} new, ${d.updated.length} updated`);
+// Save → log → work out distances. Called once per document kind, so DOs are saved before the slow invoice read.
+async function save(what: string, rows: AcDeliveryOrder[]) {
+  const d = await importAcDeliveryOrders(supabase, rows);
+  log(`${what}: ${rows.length} read, ${d.created.length} new, ${d.updated.length} updated`);
 
   for (const m of d.errors) log(`ERROR ${m}`);
   for (const m of d.warnings) log(`warning ${m}`);
@@ -63,6 +59,15 @@ async function syncOnce(filter: AcSelectFilter) {
     const r = await updateDistances(supabase, ids);
     log(`Distances worked out for ${r.measured} DOs`);
   }
+}
+
+async function syncOnce(filter: AcSelectFilter) {
+  const t0 = Date.now();
+
+  log("Reading DOs from AutoCount…");
+  await save("DO", await fetchAcDeliveryOrders(filter));
+  log("Reading inter-company invoices (M-…) from AutoCount…");
+  await save("Inter-company invoice", await fetchAcIcbDeliveryOrders(filter));
 
   log(`Done in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
