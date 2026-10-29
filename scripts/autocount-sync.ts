@@ -1,5 +1,6 @@
 /**
- * AutoCount → Supabase sync of delivery orders. Only READS from AutoCount (deliveryorder/select).
+ * AutoCount → Supabase sync of delivery orders. Only READS from AutoCount (deliveryorder/select, invoice/select).
+ * Inter-company invoices (M-PT-…) are delivered like DOs, so they're synced as DOs too.
  * Runs on a computer in the office network (the AutoCount API is at a 192.168.x.x address).
  *
  *   npm run autocount:sync -- --days 14   one time: DOs dated in the last 14 days (backfill)
@@ -8,7 +9,7 @@
  * Signs in to Supabase as the staff user in SUPABASE_SYNC_EMAIL / SUPABASE_SYNC_PASSWORD.
  */
 import { createClient } from "@supabase/supabase-js";
-import { fetchAcDeliveryOrders, type AcSelectFilter } from "../lib/autocount-api";
+import { fetchAcDeliveryOrders, fetchAcIcbDeliveryOrders, type AcSelectFilter } from "../lib/autocount-api";
 import { importAcDeliveryOrders } from "../lib/autocount";
 import { mapsEnabled, updateDistances } from "../lib/geo";
 
@@ -43,8 +44,10 @@ async function syncOnce(filter: AcSelectFilter) {
 
   log("Reading DOs from AutoCount…");
   const dos = await fetchAcDeliveryOrders(filter);
-  const d = await importAcDeliveryOrders(supabase, dos);
-  log(`DO: ${dos.length} read, ${d.created.length} new, ${d.updated.length} updated`);
+  log("Reading inter-company invoices (M-…) from AutoCount…");
+  const icb = await fetchAcIcbDeliveryOrders(filter);
+  const d = await importAcDeliveryOrders(supabase, [...dos, ...icb]);
+  log(`DO: ${dos.length} DOs + ${icb.length} inter-company invoices read, ${d.created.length} new, ${d.updated.length} updated`);
 
   for (const m of d.errors) log(`ERROR ${m}`);
   for (const m of d.warnings) log(`warning ${m}`);

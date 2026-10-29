@@ -123,7 +123,7 @@ export default async function DeliveriesPage({
   const drivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "lorry_no" | "branch">[];
   // The delivering branch's own drivers; everyone when that branch has none set up.
   const driversFor = (b: string | null) => {
-    const own = drivers.filter((d) => d.branch === b);
+    const own = drivers.filter((d) => !!b && userBranches(d.branch).includes(b));
     return own.length ? own : drivers;
   };
 
@@ -305,7 +305,7 @@ export default async function DeliveriesPage({
                         ))}
                         {plannable ? (
                           <div className="space-y-1.5">
-                            <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} />
+                            <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
                             <DoDate doId={j.id} date={j.delivery_date} today={today} />
                             {!j.is_oc && <DoTimeSlot doId={j.id} slot={j.time_slot} />}
                           </div>

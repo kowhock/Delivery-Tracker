@@ -100,10 +100,29 @@ describe("fetchAcDeliveryOrders", () => {
     });
   });
 
-  it("refuses to call anything but login and deliveryorder/select", async () => {
+  it("refuses to call anything but login, deliveryorder/select and invoice/select", async () => {
     fakeAutoCount([]);
     const { acSelect } = await import("./autocount-api");
-    // @ts-expect-error — only "deliveryorder" is allowed by the type too
+    // @ts-expect-error — only "deliveryorder" and "invoice" are allowed by the type too
     await expect(acSelect("salesorder")).rejects.toThrow(/read-only/);
+  });
+});
+
+describe("fetchAcIcbDeliveryOrders", () => {
+  it("keeps only inter-company invoices (M-<branch>-…) and reads them as DOs", async () => {
+    const { calls } = fakeAutoCount([
+      [
+        { DocNo: "M-PT-00000483", SalesAgent: "KH", DebtorName: "KOW HOCK BUILDING MATERIALS (NJ) SDN BHD", FinalTotal: 142.5 },
+        { DocNo: "GPI-00031315", SalesAgent: "GPS", DebtorName: "CASH SALES (GELANG PATAH)" },
+        { DocNo: "NBI-00032289", SalesAgent: "KH", DebtorName: "KOW HOCK BUILDING MATERIALS (NJ) SDN BHD" },
+        { DocNo: "M-XX-00000001", SalesAgent: "KH", DebtorName: "NO SUCH BRANCH" },
+        { DocNo: " m-sn-00000005", SalesAgent: "SL", DebtorName: "KOW HOCK BUILDING MATERIALS (CG) SDN BHD" },
+      ],
+    ]);
+    const { fetchAcIcbDeliveryOrders } = await import("./autocount-api");
+    const out = await fetchAcIcbDeliveryOrders({});
+    expect(out.map((d) => d.doc_no)).toEqual(["M-PT-00000483", "M-SN-00000005"]);
+    expect(out[0]).toMatchObject({ debtor_name: "KOW HOCK BUILDING MATERIALS (NJ) SDN BHD", total: 142.5 });
+    expect(calls.filter((c) => c.path === "/api/invoice/select")).toHaveLength(1);
   });
 });

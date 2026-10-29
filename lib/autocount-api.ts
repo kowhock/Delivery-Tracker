@@ -1,15 +1,16 @@
 import "server-only";
 import type { AcDeliveryOrder } from "./autocount-rows";
+import { branchFromDoNo } from "./branches";
 
 /**
  * READ-ONLY client for the IPS AutoCount API (settings in .env.local).
  * Docs: https://documenter.getpostman.com/view/2726001/2sB3dTu8Vc
  * Every endpoint there is a POST, including insert/update/delete. This client
- * can only reach login and deliveryorder/select, so it can't change AutoCount
- * data or read anything else (sales orders aren't fetched).
+ * can only reach login, deliveryorder/select and invoice/select, so it can't
+ * change AutoCount data or read anything else (sales orders aren't fetched).
  */
 
-const READABLE = ["deliveryorder"] as const;
+const READABLE = ["deliveryorder", "invoice"] as const;
 export type AcReadable = (typeof READABLE)[number];
 
 export type AcSelectFilter = {
@@ -39,7 +40,7 @@ function headers(token?: string) {
 }
 
 async function post(path: string, body: unknown, token?: string) {
-  if (!["/api/auth/login", "/api/deliveryorder/select"].includes(path)) {
+  if (!["/api/auth/login", ...READABLE.map((w) => `/api/${w}/select`)].includes(path)) {
     throw new Error(`AutoCount is read-only here: ${path} is not allowed.`);
   }
   const res = await fetch(env("AUTOCOUNT_API_URL").replace(/\/+$/, "") + path, {
@@ -107,27 +108,39 @@ async function selectAll(what: AcReadable, filter: AcSelectFilter): Promise<ApiD
   return [...all.values()];
 }
 
+const toDo = (r: ApiDoc): AcDeliveryOrder => ({
+  doc_no: r.DocNo.trim().toUpperCase(),
+  date: str(r.DocDate)?.slice(0, 10) ?? null,
+  debtor_code: str(r.DebtorCode),
+  debtor_name: str(r.DebtorName),
+  sales_location: str(r.SalesLocation),
+  delivery_address: joinAddr(r),
+  transfer_from: null, // TODO: the API has no "Transfer From" — SO ↔ DO links need it
+  transfer_to: null,
+  ref: str(r.Ref),
+  phone: str(r.DeliverPhone1) ?? str(r.DeliverContact) ?? str(r.Phone1),
+  created_user: null,
+  total: typeof r.FinalTotal === "number" ? r.FinalTotal : null,
+  cancelled: str(r.Cancelled) === "T",
+  items: ((r.Details ?? []) as Record<string, unknown>[]).map((i) => ({
+    item_code: str(i.ItemCode) ?? "",
+    description: str(i.Description),
+    uom: str(i.UOM),
+    qty: typeof i.Qty === "number" ? i.Qty : 0,
+  })),
+});
 
 export async function fetchAcDeliveryOrders(filter: AcSelectFilter): Promise<AcDeliveryOrder[]> {
-  return (await selectAll("deliveryorder", filter)).map((r) => ({
-    doc_no: r.DocNo.trim().toUpperCase(),
-    date: str(r.DocDate)?.slice(0, 10) ?? null,
-    debtor_code: str(r.DebtorCode),
-    debtor_name: str(r.DebtorName),
-    sales_location: str(r.SalesLocation),
-    delivery_address: joinAddr(r),
-    transfer_from: null, // TODO: the API has no "Transfer From" — SO ↔ DO links need it
-    transfer_to: null,
-    ref: str(r.Ref),
-    phone: str(r.DeliverPhone1) ?? str(r.DeliverContact) ?? str(r.Phone1),
-    created_user: null,
-    total: typeof r.FinalTotal === "number" ? r.FinalTotal : null,
-    cancelled: str(r.Cancelled) === "T",
-    items: ((r.Details ?? []) as Record<string, unknown>[]).map((i) => ({
-      item_code: str(i.ItemCode) ?? "",
-      description: str(i.Description),
-      uom: str(i.UOM),
-      qty: typeof i.Qty === "number" ? i.Qty : 0,
-    })),
-  }));
+  return (await selectAll("deliveryorder", filter)).map(toDo);
+}
+
+/**
+ * Inter-company deliveries: between the group's own companies the branches skip the DO and
+ * deliver on an invoice numbered "M-<branch>-…" ("M-PT-00000483" = a PT delivery).
+ * Every other invoice (GPI-, NBI-, …) is ignored.
+ */
+export async function fetchAcIcbDeliveryOrders(filter: AcSelectFilter): Promise<AcDeliveryOrder[]> {
+  return (await selectAll("invoice", filter))
+    .filter((r) => r.DocNo.trim().toUpperCase().startsWith("M-") && branchFromDoNo(r.DocNo))
+    .map(toDo);
 }

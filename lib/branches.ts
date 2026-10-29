@@ -3,47 +3,49 @@
  * and the branch columns on SOs/DOs store the `code`.
  *
  * - doPrefix:  DO numbers start with it (GPD-00044524 → GP delivers it)
+ * - icbPrefix: inter-company invoices that serve as this branch's DO start with it (M-PT-00000483)
  * - soPrefix:  SO numbers start with it
  * - locations: AutoCount "Sales Location" / "Agent" values that mean this branch
  * - store:     the store's address; delivery distance (and driver points) is measured from here
  */
 export const BRANCHES = [
   {
-    code: "GP", name: "Gelang Patah", doPrefix: "GPD", soPrefix: "GPS", locations: ["GPS", "GP"],
+    code: "GP", name: "Gelang Patah", doPrefix: "GPD", icbPrefix: "M-GP", soPrefix: "GPS", locations: ["GPS", "GP"],
     store: "Lot 261 Mukim Jelutong, Jalan Ulu Choh, 81550 Gelang Patah, Johor",
   },
   {
     // TODO: Pandan store address — until it's set, PD deliveries need points keyed in on Driver status.
-    code: "PD", name: "Pandan", doPrefix: "PDD", soPrefix: "PDS", locations: ["PD", "PDS"],
+    code: "PD", name: "Pandan", doPrefix: "PDD", icbPrefix: "M-PD", soPrefix: "PDS", locations: ["PD", "PDS"],
     store: "Jalan Kangkar Tebrau, Kangkar Tebrau Baru, 81100 Johor Bahru, Johor Darul Ta'zim",
   },
   {
-    code: "KS", name: "Kempas", doPrefix: "KSD", soPrefix: "KSS", locations: ["KP", "KS", "KSS"],
+    code: "KS", name: "Kempas", doPrefix: "KSD", icbPrefix: "M-KS", soPrefix: "KSS", locations: ["KP", "KS", "KSS"],
     store: "Lot 44565, Jalan Kempas Baru, Kempas Baru, 81300 Johor Bahru, Johor",
   },
   {
-    code: "MS", name: "Masai", doPrefix: "MSD", soPrefix: "MSS", locations: ["MS", "MSS"],
+    code: "MS", name: "Masai", doPrefix: "MSD", icbPrefix: "M-MS", soPrefix: "MSS", locations: ["MS", "MSS"],
     store: "Jalan Besar, Kampung Pertanian, 81750 Pasir Gudang, Johor",
   },
   {
-    code: "PT", name: "Pontian", doPrefix: "PTD", soPrefix: "PTS", locations: ["PT", "PTS"],
+    code: "PT", name: "Pontian", doPrefix: "PTD", icbPrefix: "M-PT", soPrefix: "PTS", locations: ["PT", "PTS"],
     store: "J46, Jalan Ulu Pulai, Kampung Parit Kassim, 82000 Pontian, Johor",
   },
   {
     // TODO: soPrefix / locations guessed from the DO prefix (SND) — check against AutoCount.
-    code: "SL", name: "Seelong", doPrefix: "SND", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
+    code: "SL", name: "Seelong", doPrefix: "SND", icbPrefix: "M-SN", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
     store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
   },
   // Delivered by the supplier; kept so the selling branch can still follow it.
-  { code: "NB2", name: "NB2 (supplier delivery)", doPrefix: "NBD", soPrefix: "NBS", locations: ["NB2", "NB"], store: null },
+  { code: "NB2", name: "NB2 (supplier delivery)", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null },
 ] as const;
 
 const prefixOf = (docNo: string) => docNo.trim().toUpperCase().split("-")[0];
 
-/** Branch that delivers a DO, from its number: "PDD-00045420" → "PD". */
+/** Branch that delivers a DO, from its number: "PDD-00045420" → "PD", "M-PT-00000483" (inter-company invoice) → "PT". */
 export function branchFromDoNo(doNo: string): string | null {
-  const p = prefixOf(doNo);
-  return BRANCHES.find((b) => b.doPrefix === p)?.code ?? null;
+  const no = doNo.trim().toUpperCase();
+  const p = prefixOf(no);
+  return BRANCHES.find((b) => b.doPrefix === p || (b.icbPrefix && no.startsWith(`${b.icbPrefix}-`)))?.code ?? null;
 }
 
 /** Branch from an AutoCount Sales Location / Agent value ("GPS", "KP", …), else from the SO number. */

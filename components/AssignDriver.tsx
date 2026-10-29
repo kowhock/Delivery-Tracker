@@ -10,13 +10,18 @@ export function AssignDriver({
   driverId,
   isOc = false,
   drivers,
+  driverName = "Current driver",
 }: {
   doId: string;
   driverId: string | null;
   isOc?: boolean;
+  driverName?: string;
   drivers: { id: string; full_name: string; lorry_no: string | null }[];
 }) {
   const [pending, start] = useTransition();
+  // Keep the current driver pickable even when they're not in the list (e.g. another branch's driver),
+  // otherwise the select falls back to "Choose driver…" and can't be changed back to unassigned.
+  const current = driverId && !drivers.some((d) => d.id === driverId) ? driverName : null;
   return (
     <select
       disabled={pending}
@@ -30,6 +35,7 @@ export function AssignDriver({
       className="input py-1.5 text-xs"
     >
       <option value="">Choose driver…</option>
+      {current && <option value={driverId!}>{current}</option>}
       {drivers.map((d) => (
         <option key={d.id} value={d.id}>{driverLabel(d)}</option>
       ))}

@@ -9,6 +9,13 @@ describe("branchFromDoNo", () => {
     expect(branchFromDoNo("SND-00001234")).toBe("SL");
     expect(branchFromDoNo("XYZ-1")).toBeNull();
   });
+
+  it("reads inter-company invoice numbers (M-PT-…) as the branch's DO", () => {
+    expect(branchFromDoNo("M-PT-00000483")).toBe("PT");
+    expect(branchFromDoNo(" m-ks-00003887 ")).toBe("KS");
+    expect(branchFromDoNo("M-SN-00000005")).toBe("SL");
+    expect(branchFromDoNo("M-XX-1")).toBeNull();
+  });
 });
 
 describe("branchFromLocation", () => {
