@@ -114,3 +114,88 @@ end $$;
 -- WhatsApp Cloud API. wa_error = why the last try failed (shown to the office).
 alter table public.delivery_orders add column if not exists wa_sent_at timestamptz;
 alter table public.delivery_orders add column if not exists wa_error   text;
+
+-- ---------- Failed deliveries still earn points -------------------------
+-- Every time a DO turns Failed, the attempt is kept here (driver, lorry, day, trip,
+-- when they set off, why it failed). Commission and the trip form count these like
+-- delivered DOs (the DO's own points), so a DO that fails and is redelivered earns twice.
+create table if not exists public.delivery_attempts (
+  id            uuid primary key default gen_random_uuid(),
+  do_id         uuid not null references public.delivery_orders on delete cascade,
+  driver_id     uuid references public.profiles on delete set null,
+  lorry_id      uuid references public.lorries on delete set null,
+  delivery_date date not null,
+  trip_no       int not null default 1,
+  started_at    timestamptz,                   -- when the driver tapped Start for this attempt
+  failed_at     timestamptz not null default now(),
+  failed_reason text
+);
+create index if not exists delivery_attempts_driver_idx on public.delivery_attempts (driver_id, failed_at);
+create index if not exists delivery_attempts_do_idx on public.delivery_attempts (do_id);
+
+create or replace function public.record_failed_attempt() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.status = 'failed' and old.status is distinct from 'failed' then
+    insert into public.delivery_attempts (do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_reason)
+    values (
+      new.id, new.driver_id,
+      coalesce((select l.id from public.lorries l where l.driver_id = new.driver_id), new.lorry_id),
+      new.delivery_date, new.trip_no,
+      (select max(e.created_at) from public.status_events e where e.do_id = new.id and e.status = 'out_for_delivery'),
+      new.failed_reason
+    );
+  end if;
+  return null;
+end $$;
+
+drop trigger if exists record_failed_attempt on public.delivery_orders;
+create trigger record_failed_attempt
+  after update of status on public.delivery_orders
+  for each row execute function public.record_failed_attempt();
+
+alter table public.delivery_attempts enable row level security;
+drop policy if exists "staff all" on public.delivery_attempts;
+drop policy if exists "driver reads own attempts" on public.delivery_attempts;
+create policy "staff all" on public.delivery_attempts for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "driver reads own attempts" on public.delivery_attempts for select using (driver_id = (select auth.uid()));
+grant select, insert, update, delete on public.delivery_attempts to authenticated;
+
+-- A driver keeps seeing the points of a DO they failed, even after it's given to another driver.
+drop policy if exists "driver reads attempted DOs" on public.delivery_orders;
+create policy "driver reads attempted DOs" on public.delivery_orders
+  for select using (exists (
+    select 1 from public.delivery_attempts a where a.do_id = delivery_orders.id and a.driver_id = (select auth.uid())));
+
+-- DOs that are Failed right now get their attempt (failed at = when it was marked failed).
+insert into public.delivery_attempts (do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_at, failed_reason)
+select d.id, d.driver_id, coalesce((select l.id from public.lorries l where l.driver_id = d.driver_id), d.lorry_id),
+       d.delivery_date, d.trip_no,
+       (select max(e.created_at) from public.status_events e where e.do_id = d.id and e.status = 'out_for_delivery'),
+       coalesce((select max(e.created_at) from public.status_events e where e.do_id = d.id and e.status = 'failed'), now()),
+       d.failed_reason
+from public.delivery_orders d
+where d.status = 'failed' and not d.cancelled
+  and not exists (select 1 from public.delivery_attempts a where a.do_id = d.id);
+
+-- Every earlier failure from the DO history (status_events), including DOs that were failed
+-- and then redelivered or unassigned before delivery_attempts existed. The driver is whoever
+-- marked it failed (else the DO's driver); the day is the day it failed. Safe to run twice.
+insert into public.delivery_attempts (do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_at, failed_reason)
+select e.do_id, drv.id,
+       (select l.id from public.lorries l where l.driver_id = drv.id),
+       (e.created_at at time zone 'Asia/Kuala_Lumpur')::date,
+       d.trip_no,
+       (select max(s.created_at) from public.status_events s
+         where s.do_id = e.do_id and s.status = 'out_for_delivery' and s.created_at <= e.created_at),
+       e.created_at,
+       e.note
+from public.status_events e
+join public.delivery_orders d on d.id = e.do_id and not d.cancelled
+cross join lateral (
+  select coalesce((select p.id from public.profiles p where p.id = e.actor_id and p.role = 'driver'), d.driver_id) as id
+) drv
+where e.status = 'failed'
+  and not exists (
+    select 1 from public.delivery_attempts a
+    where a.do_id = e.do_id and a.failed_at between e.created_at - interval '1 minute' and e.created_at + interval '1 minute');

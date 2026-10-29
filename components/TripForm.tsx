@@ -14,7 +14,9 @@ const CHECKS = ["HYDRAULIC OIL", "ENGINE OIL", "WATER LEVEL", "TYRE"];
 
 export type TripDo = { id: string; doNo: string; location: string; timeIn: string; timeBack: string; points: number | null; manual: boolean;
   /** AutoCount address, set only when the office changed the delivery address used for points (`location` is the new one). */
-  original: string };
+  original: string;
+  /** Why this attempt failed; set only on failed attempts (they still earn their points). */
+  failed?: string };
 export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
 
 type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[] };
@@ -200,7 +202,13 @@ function DoBoxRow({ field, row, x, at, filled, setFilled }: Filled & { field: Fi
   return (
     <>
       <th className={`${head} h-8 text-[10px] print:h-[8.5mm] print:text-[11px]`}>{LABELS[field]}</th>
-      {field === "location" && x?.original ? (
+      {field === "location" && x?.failed ? (
+        // Failed attempt: why, above the address (the points still count).
+        <td className={`${cell} py-0.5 leading-tight`} title={`Failed: ${x.failed}\n${value}`}>
+          <div className="truncate text-[9px] font-semibold text-rose-600 print:text-[10px]">❌ Failed: {x.failed}</div>
+          <div className="line-clamp-2 break-words">{value}</div>
+        </td>
+      ) : field === "location" && x?.original ? (
         // Address changed by the office: the AutoCount one on top, the one used for points below.
         <td className={`${cell} py-0.5 leading-tight`} title={`Original: ${x.original}\nUpdated: ${value}`}>
           <div className="truncate text-[9px] text-slate-500 print:text-[10px]">{x.original}</div>
@@ -219,7 +227,11 @@ function DoBoxRow({ field, row, x, at, filled, setFilled }: Filled & { field: Fi
         <td className={`${cell} py-0 ${row === 0 ? "font-semibold" : ""}`}>{blank(field)}</td>
       )}
       {row === 0 ? (
-        <th className={`${head} text-center text-[10px]`}>Remark</th>
+        x?.failed ? (
+          <th className={`${head} text-center text-[10px] text-rose-600`} title={`Failed: ${x.failed}`}>FAILED</th>
+        ) : (
+          <th className={`${head} text-center text-[10px]`}>Remark</th>
+        )
       ) : row === 1 ? (
         <td
           rowSpan={3}
@@ -389,15 +401,18 @@ function dailySheet(wb: Workbook, p: Props, filled: Record<string, string>) {
         FIELDS.forEach((f, k) => {
           put(ws, `${L}${r + k}`, LABELS[f], { bold: true });
           const typed = filled[boxKey(n, row, side, f)] ?? "";
-          const auto = f === "location" && x?.original ? `Original: ${x.original}\nUpdated: ${x.location}` : x?.[f];
+          const auto =
+            f === "location" && x?.failed ? `FAILED: ${x.failed}\n${x.location}`
+            : f === "location" && x?.original ? `Original: ${x.original}\nUpdated: ${x.location}`
+            : x?.[f];
           put(ws, `${V}${r + k}`, auto || typed, { bold: k === 0, typed: !auto });
         });
-        put(ws, `${R}${r}`, "REMARK", { bold: true, center: true });
+        put(ws, `${R}${r}`, x?.failed ? "FAILED" : "REMARK", { bold: true, center: true });
         put(ws, `${R}${r + 1}`, x ? x.points ?? "" : filled[boxKey(n, row, side, "points")] ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14, typed: !x });
         if (x?.manual) for (let k = r + 1; k <= last; k++) ws.getCell(`${R}${k}`).fill = lightBlue;
       });
       // The location line fits two lines of text, or four when it shows the original and updated address.
-      const changed = pair.some((x) => x?.original);
+      const changed = pair.some((x) => x?.original || x?.failed);
       FIELDS.forEach((f, k) => (ws.getRow(r + k).height = f === "location" ? (changed ? 52 : 28) : 20));
       r += FIELDS.length;
     }

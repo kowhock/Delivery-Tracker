@@ -7,6 +7,7 @@ import { CalculatePointsButton } from "@/components/PointsEditor";
 import { dayTotals, sumDays, withTripPoints } from "@/lib/commission";
 import { mapsEnabled } from "@/lib/geo";
 import { withStartedAt } from "@/lib/delivery-times";
+import { failedAttempts } from "@/lib/attempts";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 
 const MAX_DAYS = 31;
@@ -54,8 +55,10 @@ export default async function DriversPage({
       .eq("cancelled", false)
       .gte("delivered_at", `${dates[0]}T00:00:00+08:00`)
       .lt("delivered_at", end.toISOString());
+    // Failed attempts earn their points too.
+    const failed = await failedAttempts(supabase, drivers.map((d) => d.id), `${dates[0]}T00:00:00+08:00`, end.toISOString());
     for (const d of drivers) {
-      const mine = withTripPoints((deliveredRows ?? []).filter((r) => r.driver_id === d.id));
+      const mine = withTripPoints([...(deliveredRows ?? []), ...failed].filter((r) => r.driver_id === d.id));
       if (mine.length) stats[d.id] = sumDays(dayTotals(mine));
     }
 

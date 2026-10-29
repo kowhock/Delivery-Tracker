@@ -249,6 +249,55 @@ export async function moveToDate(doIds: string[], date: string) {
 }
 
 /**
+ * Failed DO goes out again: back to Assigned (same driver) or Unassigned, from today at the
+ * earliest. The failed attempt stays in delivery_attempts and keeps its points. Same day and
+ * driver = a new trip, so the trip rule doesn't merge it with the failed one.
+ */
+export async function redeliver(doId: string) {
+  const { supabase, profile } = await requireStaff();
+  const { data: d } = await supabase
+    .from("delivery_orders")
+    .select("so_id, status, branch, driver_id, delivery_date, trip_no")
+    .eq("id", doId)
+    .single();
+  if (!d) throw new Error("DO not found.");
+  if (d.status !== "failed") throw new Error("Only failed DOs can be redelivered.");
+  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+
+  const today = todayMY();
+  const date = d.delivery_date < today ? today : d.delivery_date;
+  let trip = 1;
+  if (d.driver_id && date === d.delivery_date) {
+    const { data: last } = await supabase
+      .from("delivery_orders")
+      .select("trip_no")
+      .eq("driver_id", d.driver_id)
+      .eq("delivery_date", date)
+      .order("trip_no", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    trip = (last?.trip_no ?? 0) + 1;
+  }
+  const status: DoStatus = d.driver_id ? "assigned" : "pending";
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({ status, failed_reason: null, delivery_date: date, trip_no: trip, trip_seq: 0 })
+    .eq("id", doId);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("status_events").insert({
+    so_id: d.so_id,
+    do_id: doId,
+    status,
+    note: `Redeliver on ${fmtDate(date)}`,
+  });
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  revalidatePath("/orders/[id]", "page");
+}
+
+/**
  * O/C: the customer collected at the store. Counts as delivered (no driver, so no commission).
  * `at` = when ("2026-10-29T15:30", Malaysia time); null = now. collected = false undoes it.
  */

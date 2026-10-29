@@ -11,6 +11,7 @@ import { BranchTags } from "@/components/DocLinks";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
 import { OcCollect } from "@/components/OcCollect";
+import { Redeliver } from "@/components/Redeliver";
 import { NavForm, NavLink, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -104,7 +105,7 @@ export default async function DeliveriesPage({
       supabase
         .from("delivery_orders")
         .select(
-          "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name))",
+          "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name)), attempts:delivery_attempts(id, failed_at, failed_reason)",
           { count: "exact" }
         )
     )
@@ -313,7 +314,18 @@ export default async function DeliveriesPage({
                             {j.status === "delivered" && j.delivered_at && <span className="text-emerald-700">Delivered {fmtTime(j.delivered_at)}</span>}
                           </p>
                         )}
-                        {j.failed_reason && <p className="text-xs text-rose-600">{j.failed_reason}</p>}
+                        {j.status === "failed" ? (
+                          <p className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
+                            ❌ <span className="font-medium">Failed</span> · {j.failed_reason || "no reason given"}
+                          </p>
+                        ) : (
+                          // Redelivered: earlier failed tries (they still earned their points).
+                          j.attempts?.map((a) => (
+                            <p key={a.id} className="text-xs text-slate-400">
+                              ↻ Failed {fmtDateTime(a.failed_at)}{a.failed_reason && ` · ${a.failed_reason}`}
+                            </p>
+                          ))
+                        )}
                         {open.map((o) => (
                           <p key={o.id} className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
                             ⚠ <span className="font-medium">{todoLabel(o)}</span> · {o.reason}
@@ -335,6 +347,7 @@ export default async function DeliveriesPage({
                           </div>
                         ) : plannable ? (
                           <div className="space-y-1.5">
+                            {j.status === "failed" && <Redeliver doId={j.id} />}
                             <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
                             <DoDate doId={j.id} date={j.delivery_date} today={today} />
                             {!j.is_oc && <DoTimeSlot doId={j.id} slot={j.time_slot} />}

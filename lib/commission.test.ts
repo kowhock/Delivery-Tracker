@@ -70,6 +70,15 @@ describe("withTripPoints", () => {
 });
 
 describe("dayTotals + sumDays", () => {
+  it("gives failed attempts their points without counting them as delivered", () => {
+    const days = dayTotals([
+      { delivered_at: "2026-10-27T03:00:00Z", points: 2 },
+      { delivered_at: "2026-10-27T05:00:00Z", points: 3, failed: true },
+    ]);
+    expect(days.get("2026-10-27")).toEqual({ delivered: 1, points: 5, missingPoints: 0 });
+  });
+
+
   it("groups by the Malaysian day and works out commission per day", () => {
     const days = dayTotals([
       { delivered_at: "2026-10-26T17:30:00Z", points: 6 }, // 01:30 on the 27th in Malaysia

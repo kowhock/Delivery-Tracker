@@ -4,6 +4,7 @@ import type { DeliveryOrder } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
 import { CommissionBar } from "@/components/CommissionBar";
 import { dayTotals, withTripPoints } from "@/lib/commission";
+import { failedAttempts } from "@/lib/attempts";
 import { signOut } from "../actions";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -42,7 +43,9 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
     .eq("cancelled", false)
     .gte("delivered_at", `${date}T00:00:00+08:00`)
     .lt("delivered_at", dayEnd.toISOString());
-  const day = dayTotals(withTripPoints(deliveredRows ?? [])).get(date) ?? { delivered: 0, points: 0, missingPoints: 0 };
+  // Failed attempts earn their points too.
+  const failed = await failedAttempts(supabase, [user.id], `${date}T00:00:00+08:00`, dayEnd.toISOString());
+  const day = dayTotals(withTripPoints([...(deliveredRows ?? []), ...failed])).get(date) ?? { delivered: 0, points: 0, missingPoints: 0 };
 
   const { data } = await supabase
     .from("delivery_orders")

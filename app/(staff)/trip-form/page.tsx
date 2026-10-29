@@ -3,6 +3,7 @@ import { requireStaff } from "@/lib/auth";
 import { branchName, lockedBranches } from "@/lib/branches";
 import { addDays, dateRange, fmtTime, mapAddress, todayMY } from "@/lib/format";
 import { startedTimes } from "@/lib/delivery-times";
+import { failedAttempts, type FailedAttempt } from "@/lib/attempts";
 import { commissionForDay, withTripPoints } from "@/lib/commission";
 import { lorryLabel, type Lorry, type Profile } from "@/lib/types";
 import { TripForm, type TripDay } from "@/components/TripForm";
@@ -35,20 +36,25 @@ export default async function TripFormPage({
   let days: TripDay[] = [];
   let lorry = "";
   if (driver) {
-    // Commission counts what was delivered on each day (delivered_at), like Driver status.
+    // Commission counts what was delivered on each day (delivered_at), like Driver status,
+    // and every failed attempt on the day it failed (with a "Failed" remark).
+    const dayStart = `${dates[0]}T00:00:00+08:00`;
+    const dayEnd = `${addDays(dates[dates.length - 1], 1)}T00:00:00+08:00`;
     const { data: rows } = await supabase
       .from("delivery_orders")
       .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, points, points_manual, delivered_at, lorry_id")
       .eq("driver_id", driver.id)
       .eq("status", "delivered")
       .eq("cancelled", false)
-      .gte("delivered_at", `${dates[0]}T00:00:00+08:00`)
-      .lt("delivered_at", `${addDays(dates[dates.length - 1], 1)}T00:00:00+08:00`)
+      .gte("delivered_at", dayStart)
+      .lt("delivered_at", dayEnd)
       .order("delivered_at");
-    const delivered = withTripPoints(rows ?? []);
+    const failed = await failedAttempts(supabase, [driver.id], dayStart, dayEnd);
+    const delivered = withTripPoints<NonNullable<typeof rows>[number] & Partial<FailedAttempt>>([...(rows ?? []), ...failed]).sort((a, b) => a.delivered_at!.localeCompare(b.delivered_at!));
 
     // Time in = when the driver tapped Start (the last time, if started more than once).
-    const started = await startedTimes(supabase, delivered.map((d) => d.id));
+    // A failed attempt keeps the start of that attempt.
+    const started = await startedTimes(supabase, (rows ?? []).map((d) => d.id));
 
     // Lorries used (stamped on each DO when delivered); else the driver's lorry now.
     const lorryIds = [...new Set(delivered.map((d) => d.lorry_id).filter((x): x is string => !!x))];
@@ -77,11 +83,12 @@ export default async function TripFormPage({
           id: d.id,
           doNo: d.do_no,
           location: mapAddress(d) || d.customer_name,
-          timeIn: fmtTime(started.get(d.id)),
+          timeIn: fmtTime(d.failed ? d.started_at : started.get(d.id)),
           timeBack: fmtTime(d.delivered_at),
           points: d.points,
           manual: d.points_manual && d.points != null,
           original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
+          failed: d.failed ? d.failed_reason || "Failed" : "",
         })),
       };
     });

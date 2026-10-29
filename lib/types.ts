@@ -107,6 +107,7 @@ export type DeliveryOrder = {
   do_items?: DoItem[];
   links?: DoSoLink[];
   outstanding?: Outstanding[]; // only the ones not cleared yet
+  attempts?: { id: string; failed_at: string; failed_reason: string | null }[]; // failed tries (delivery_attempts)
 };
 
 /** status_events.status → what the timeline / DO history shows. */
