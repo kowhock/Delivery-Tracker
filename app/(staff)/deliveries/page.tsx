@@ -236,11 +236,12 @@ export default async function DeliveriesPage({
           <NavForm className="flex flex-wrap items-center gap-1.5">
             {hidden({ ...keep, branch: undefined })}
             {(!locked || locked.length > 1) && (
-              <select name="branch" defaultValue={branch || "all"} aria-label="Branch" className="input w-auto px-2 py-1 text-xs">
-                <option value="all">{locked ? "All my branches" : "All branches"}</option>
+              // Short labels keep the dropdown narrow, so the DO search fits on the same row.
+              <select name="branch" defaultValue={branch || "all"} aria-label="Branch" title="Branch (★ = mine)" className="input w-auto px-2 py-1 text-xs">
+                <option value="all">{locked ? "All" : "All"}</option>
                 {BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => (
                   <option key={b.code} value={b.code}>
-                    {b.code}{!locked && userBranches(profile.branch).includes(b.code) ? " (mine)" : ""}
+                    {b.code}{!locked && userBranches(profile.branch).includes(b.code) ? " ★" : ""}
                   </option>
                 ))}
               </select>
