@@ -136,7 +136,7 @@ export default async function DeliveriesPage({
   const columns = [
     ...statuses.map((s) => ({ key: s, label: DO_STATUS_LABEL[s], dot: COLUMN_DOT[s], jobs: jobs.filter((j) => !j.is_oc && j.status === s) })),
     ...(showOc
-      ? [{ key: "oc", label: "O/C (customer collects)", dot: "bg-violet-500", jobs: jobs.filter((j) => j.is_oc).sort((a, b) => Number(a.status === "delivered") - Number(b.status === "delivered")) }]
+      ? [{ key: "oc", label: "O/C", dot: "bg-violet-500", jobs: jobs.filter((j) => j.is_oc).sort((a, b) => Number(a.status === "delivered") - Number(b.status === "delivered")) }]
       : []),
   ];
 
@@ -287,10 +287,10 @@ export default async function DeliveriesPage({
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
                             <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path} />
-                            {j.is_oc && <span className="font-normal text-slate-400">· O/C</span>}
                           </span>
                           <BranchTags job={j} />
                         </div>
+                        {j.is_oc && <p className="-mt-1.5 text-xs font-medium text-violet-600">O/C (customer collects)</p>}
                         {(j.links?.length || j.so_no) && (
                           <p className="-mt-1.5 text-xs text-slate-400">{j.links?.length ? j.links.map((l) => l.so_no).join(", ") : j.so_no}</p>
                         )}
