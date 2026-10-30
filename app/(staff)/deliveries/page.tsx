@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
-import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
+import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
@@ -92,9 +92,9 @@ export default async function DeliveriesPage({
     else {
       if (from) query = query.gte("delivery_date", from);
       if (to) query = query.lte("delivery_date", to);
-      // A branch sees what it delivers; Cross-branch switches to what it sold that another branch delivers (view only).
+      // A branch sees what it delivers (and DOs handed over to it); Cross-branch switches to what it sold that another branch delivers (view only).
       if (branch && crossOnly) query = query.eq("sales_branch", branch).neq("branch", branch);
-      else if (branch) query = query.eq("branch", branch);
+      else if (branch) query = query.or(`branch.eq.${branch},helper_branch.eq.${branch}`);
     }
     return query;
   };
@@ -128,11 +128,8 @@ export default async function DeliveriesPage({
     ? ((await filtered(supabase.from("delivery_orders").select("id", { count: "exact", head: true })).eq("status", "delivered")).count ?? 0)
     : jobs.filter((j) => j.status === "delivered").length;
   const drivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "lorry_no" | "branch">[];
-  // The delivering branch's own drivers; everyone when that branch has none set up.
-  const driversFor = (b: string | null) => {
-    const own = drivers.filter((d) => !!b && userBranches(d.branch).includes(b));
-    return own.length ? own : drivers;
-  };
+  // The delivering branch's drivers — only the other branch's once a DO is assigned to it; everyone when that branch has none set up.
+  const driversFor = (j: Pick<DeliveryOrder, "branch" | "helper_branch">) => driversForBranch(drivers, j.helper_branch ?? j.branch);
 
   // O/C DOs get a column of their own (not Unassigned); still to collect first, collected ones below.
   const columns = [
@@ -176,6 +173,8 @@ export default async function DeliveriesPage({
         table="delivery_orders"
         filter={term || !branch ? undefined : crossOnly ? `sales_branch=eq.${branch}` : `branch=eq.${branch}`}
       />
+      {/* …and DOs handed over to this branch (live updates take one filter each). */}
+      {!term && branch && !crossOnly && <RealtimeRefresh table="delivery_orders" filter={`helper_branch=eq.${branch}`} />}
       {/* A sync that changed nothing still moves "synced … ago" forward. */}
       <RealtimeRefresh table="sync_status" />
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -279,8 +278,8 @@ export default async function DeliveriesPage({
                 </h2>
                 <div className="space-y-2">
                   {col.map((j) => {
-                    // Only the delivering branch picks the driver and day; others just follow along.
-                    const mine = canPlan(profile.branch, j.branch);
+                    // Only the delivering branch (or the branch it was handed over to) picks the driver and day; others just follow along.
+                    const mine = canPlan(profile.branch, j.branch, j.helper_branch);
                     const plannable = mine && PLANNABLE.includes(j.status);
                     const late = j.status !== "delivered" && j.delivery_date < today;
                     const open = j.outstanding ?? [];
@@ -288,7 +287,10 @@ export default async function DeliveriesPage({
                       <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path} />
+                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path}
+                              // Only the DO's own branch assigns it to (or takes it back from) another branch.
+                              handOver={plannable && !j.is_oc && j.branch && canPlan(profile.branch, j.branch) ? { branch: j.branch, helper: j.helper_branch, hasDriver: !!j.driver_id } : undefined}
+                            />
                           </span>
                           <span className="flex items-center gap-2">
                             {j.source === "special" && !j.special_no && (j.created_by === user.id || profile.role === "admin") && PLANNABLE.includes(j.status) && (
@@ -343,7 +345,7 @@ export default async function DeliveriesPage({
                             <OcCollect key={`${j.status}-${j.delivered_at}`} doId={j.id} collectedAt={j.status === "delivered" ? (j.delivered_at ?? j.created_at) : null} />
                             {/* No delivery date for O/C; picking a driver makes it a delivery, and its card then has the date. */}
                             {plannable && (
-                              <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
+                              <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
                             )}
                           </div>
                         ) : j.is_oc ? (
@@ -355,7 +357,7 @@ export default async function DeliveriesPage({
                         ) : plannable ? (
                           <div className="space-y-1.5">
                             {j.status === "failed" && <Redeliver doId={j.id} />}
-                            <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j.branch)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
+                            <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
                             <DoDate doId={j.id} date={j.delivery_date} today={today} />
                             {!j.is_oc && <DoTimeSlot doId={j.id} slot={j.time_slot} />}
                           </div>
@@ -364,7 +366,11 @@ export default async function DeliveriesPage({
                             <p>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? "O/C (customer collects)" : "No driver yet"}</p>
                             <p className={late ? "text-rose-600" : ""}>📅 {fmtDate(j.delivery_date)}{late && " · late"}</p>
                             {j.time_slot && <p>🕒 Estimated {TIME_SLOTS[j.time_slot]}</p>}
-                            {!mine && <p className="text-slate-400">{branchName(j.branch)} ({j.branch}) is delivering this DO</p>}
+                            {!mine && (
+                              <p className="text-slate-400">
+                                {branchName(j.branch)} ({j.branch}) is delivering this DO{j.helper_branch && ` · ${branchName(j.helper_branch)} delivers`}
+                              </p>
+                            )}
                           </div>
                         )}
                       </article>

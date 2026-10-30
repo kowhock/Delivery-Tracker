@@ -31,11 +31,11 @@ export async function moveToTrip(input: {
 
   const { data: current } = await supabase
     .from("delivery_orders")
-    .select("so_id, status, driver_id, delivery_date, trip_no, trip_seq, branch")
+    .select("so_id, status, driver_id, delivery_date, trip_no, trip_seq, branch, helper_branch")
     .eq("id", doId)
     .single();
   if (!current) throw new Error("Delivery order not found");
-  if (!canPlan(profile.branch, current.branch)) throw new Error(notYourBranch(current.branch));
+  if (!canPlan(profile.branch, current.branch, current.helper_branch)) throw new Error(notYourBranch(current.branch));
   if (current.status === "delivered" || current.status === "out_for_delivery") {
     throw new Error("This order is already on the road or delivered and can't be moved.");
   }
@@ -103,7 +103,7 @@ export async function optimiseTrip(lane: { driverId: string; date: string; tripN
     supabase.from("profiles").select("branch").eq("id", lane.driverId).single(),
     supabase
       .from("delivery_orders")
-      .select("id, so_id, do_no, status, branch, address, map_address, geo_input, geo_lat, geo_lng, trip_seq")
+      .select("id, so_id, do_no, status, branch, helper_branch, address, map_address, geo_input, geo_lat, geo_lng, trip_seq")
       .eq("driver_id", lane.driverId)
       .eq("delivery_date", lane.date)
       .eq("trip_no", lane.tripNo)
@@ -111,7 +111,7 @@ export async function optimiseTrip(lane: { driverId: string; date: string; tripN
       .order("trip_seq"),
   ]);
   const stops = rows ?? [];
-  const other = stops.find((d) => !canPlan(profile.branch, d.branch));
+  const other = stops.find((d) => !canPlan(profile.branch, d.branch, d.helper_branch));
   if (other) throw new Error(notYourBranch(other.branch));
 
   const started = stops.filter((d) => d.status === "out_for_delivery" || d.status === "delivered");
@@ -178,11 +178,11 @@ export async function recordTripFormDo(input: { driverId: string; date: string; 
 
   const { data: d } = await supabase
     .from("delivery_orders")
-    .select("id, so_id, status, driver_id, delivery_date, branch, cancelled")
+    .select("id, so_id, status, driver_id, delivery_date, branch, helper_branch, cancelled")
     .eq("do_no", doNo)
     .maybeSingle();
   if (!d) throw new Error(`${doNo} isn't in the system — check the DO number.`);
-  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (!canPlan(profile.branch, d.branch, d.helper_branch)) throw new Error(notYourBranch(d.branch ?? ""));
   if (d.cancelled) throw new Error(`${doNo} is cancelled in AutoCount.`);
   if (d.status === "delivered" && d.driver_id !== input.driverId) throw new Error(`${doNo} was already delivered by another driver.`);
 
@@ -235,9 +235,9 @@ export async function fromTripForm(doIds: string[]): Promise<string[]> {
 /** Undoes a trip form save: the DO goes back to Unassigned (no driver, not delivered). */
 export async function undoTripFormDo(doId: string) {
   const { supabase, profile } = await requireStaff();
-  const { data: d } = await supabase.from("delivery_orders").select("so_id, do_no, status, branch").eq("id", doId).single();
+  const { data: d } = await supabase.from("delivery_orders").select("so_id, do_no, status, branch, helper_branch").eq("id", doId).single();
   if (!d) throw new Error("DO not found.");
-  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (!canPlan(profile.branch, d.branch, d.helper_branch)) throw new Error(notYourBranch(d.branch ?? ""));
   if (d.status !== "delivered" || !(await fromTripForm([doId])).length) throw new Error(`${d.do_no} wasn't recorded from the trip form, so it can't be undone here.`);
 
   const { error } = await supabase

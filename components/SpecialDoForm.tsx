@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition, type KeyboardEvent } from "react";
-import { BRANCHES } from "@/lib/branches";
-import { FAR_KM, FAR_POINTS, NEAR_POINTS } from "@/lib/commission";
+import { useState, useTransition, type KeyboardEvent } from "react";
+import { BRANCHES, driversForBranch } from "@/lib/branches";
+import { NEAR_POINTS } from "@/lib/commission";
 import { driverLabel } from "@/lib/format";
 import type { DeliveryOrder, Profile } from "@/lib/types";
 
-type Values = Pick<DeliveryOrder, "customer_name" | "address" | "contact_phone" | "delivery_date" | "branch" | "driver_id" | "points" | "instructions">;
+type Values = Pick<DeliveryOrder, "customer_name" | "address" | "contact_phone" | "delivery_date" | "branch" | "driver_id" | "points" | "instructions"> & Partial<Pick<DeliveryOrder, "helper_branch">>;
 
 /**
  * Enter moves to the next box instead of sending the form, so the office can key in
@@ -31,7 +31,7 @@ export function SpecialDoForm({
   onDelete,
 }: {
   action: (formData: FormData) => Promise<void>;
-  drivers: Pick<Profile, "id" | "full_name" | "lorry_no">[];
+  drivers: Pick<Profile, "id" | "full_name" | "lorry_no" | "branch">[];
   /** Dispatchers: the only branches they can pick. */
   lockedTo: string[] | null;
   values: Values;
@@ -40,12 +40,18 @@ export function SpecialDoForm({
   onDelete?: () => Promise<void>;
 }) {
   const [deleting, startDelete] = useTransition();
+  const [branch, setBranch] = useState(values.branch ?? lockedTo?.[0] ?? "");
+  const [driverId, setDriverId] = useState(values.driver_id ?? "");
+  // Only the branch's own drivers. A driver it already had from another branch stays pickable
+  // so editing other fields doesn't drop them.
+  const shown = driversForBranch(drivers, branch, values.helper_branch);
+  const kept = values.driver_id && !shown.some((d) => d.id === values.driver_id) ? drivers.find((d) => d.id === values.driver_id) : undefined;
 
   return (
     <form action={action} onKeyDown={enterToNext} className="card grid gap-4 p-5 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <label className="label">Deliver to (customer / place)</label>
-        <input name="customer_name" required autoFocus defaultValue={values.customer_name} className="input" placeholder="e.g. Kempas branch, or customer name" />
+        <input name="customer_name" required autoFocus defaultValue={values.customer_name} className="input" placeholder="e.g. Stock Transfer DO, Kempas branch, or customer name" />
       </div>
       <div className="sm:col-span-2">
         <label className="label">Delivery address</label>
@@ -61,27 +67,34 @@ export function SpecialDoForm({
       </div>
       <div>
         <label className="label">Branch</label>
-        <select name="branch" defaultValue={values.branch ?? ""} className="input">
+        <select
+          name="branch"
+          value={branch}
+          onChange={(e) => {
+            setBranch(e.target.value);
+            if (driverId !== values.driver_id && !driversForBranch(drivers, e.target.value, values.helper_branch).some((d) => d.id === driverId)) setDriverId("");
+          }}
+          className="input"
+        >
           {!lockedTo && <option value="">—</option>}
           {BRANCHES.filter((b) => !lockedTo || lockedTo.includes(b.code)).map((b) => <option key={b.code} value={b.code}>{b.code} · {b.name}</option>)}
         </select>
       </div>
       <div>
         <label className="label">Driver</label>
-        <select name="driver_id" defaultValue={values.driver_id ?? ""} className="input">
+        <select name="driver_id" value={driverId} onChange={(e) => setDriverId(e.target.value)} className="input">
           <option value="">Assign later</option>
-          {drivers.map((d) => <option key={d.id} value={d.id}>{driverLabel(d)}</option>)}
+          {kept && <option value={kept.id}>{driverLabel(kept)} (other branch)</option>}
+          {shown.map((d) => <option key={d.id} value={d.id}>{driverLabel(d)}</option>)}
         </select>
       </div>
       <div>
         <label className="label">Points for the driver</label>
         <input name="points" type="number" min={0} max={99} step={1} defaultValue={values.points ?? NEAR_POINTS} required className="input" />
-        <p className="mt-1 text-xs text-slate-400">Usual rule: {FAR_POINTS} if over {FAR_KM} km, else {NEAR_POINTS}.</p>
       </div>
       <div className="sm:col-span-2">
         <label className="label">Instructions to driver</label>
         <textarea name="instructions" rows={3} defaultValue={values.instructions ?? ""} className="input" placeholder="e.g. Collect 20 bags from supplier first, call Mr Tan on arrival" />
-        <p className="mt-1 text-xs text-slate-400">Enter goes to the next box · Shift+Enter for a new line</p>
       </div>
       <div className="flex gap-2 sm:col-span-2">
         <button className="btn-primary">{submitLabel}</button>

@@ -12,10 +12,10 @@ export default async function EditSpecialDoPage({ params }: { params: Promise<{ 
   const { supabase, user, profile } = await requireStaff();
   const [{ data: job }, { data: driverRows }] = await Promise.all([
     supabase.from("delivery_orders").select("*").eq("id", id).eq("source", "special").maybeSingle<DeliveryOrder>(),
-    supabase.from("profiles").select("id, full_name, lorry_no").eq("role", "driver").order("full_name"),
+    supabase.from("profiles").select("id, full_name, lorry_no, branch").eq("role", "driver").order("full_name"),
   ]);
   if (!job) notFound();
-  const drivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "lorry_no">[];
+  const drivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "lorry_no" | "branch">[];
   const allowed = job.created_by === user.id || profile.role === "admin";
   const editable = ["pending", "assigned", "failed"].includes(job.status);
 

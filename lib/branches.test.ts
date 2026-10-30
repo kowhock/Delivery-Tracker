@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchFromDoNo, branchFromLocation, branchName, branchToSave, canPlan, deliveredOrSoldBy, lockedBranches, pageBranch, pickBranch, userBranches } from "./branches";
+import { branchFromDoNo, branchFromLocation, branchName, branchToSave, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, pickBranch, userBranches } from "./branches";
 import { splitDocNos } from "./autocount-rows";
 
 describe("branchFromDoNo", () => {
@@ -41,6 +41,14 @@ describe("who sees and plans what", () => {
     expect(canPlan("KS,MS", "GP")).toBe(false);
   });
 
+  it("canPlan: the branch a DO was handed over to can plan it too", () => {
+    expect(canPlan("KS", "GP", "KS")).toBe(true); // helping branch
+    expect(canPlan("GP", "GP", "KS")).toBe(true); // own branch still can
+    expect(canPlan("PD", "GP", "KS")).toBe(false); // anyone else can't
+    expect(canPlan("PD,KS", "GP", "KS")).toBe(true);
+    expect(canPlan("KS", "GP", null)).toBe(false);
+  });
+
   it("userBranches: one code or several, comma-separated", () => {
     expect(userBranches("KS")).toEqual(["KS"]);
     expect(userBranches(" ks, MS ,")).toEqual(["KS", "MS"]);
@@ -79,8 +87,8 @@ describe("who sees and plans what", () => {
   });
 
   it("deliveredOrSoldBy builds the PostgREST filter", () => {
-    expect(deliveredOrSoldBy("GP")).toBe("branch.in.(GP),sales_branch.in.(GP)");
-    expect(deliveredOrSoldBy(["KS", "MS"])).toBe("branch.in.(KS,MS),sales_branch.in.(KS,MS)");
+    expect(deliveredOrSoldBy("GP")).toBe("branch.in.(GP),sales_branch.in.(GP),helper_branch.in.(GP)");
+    expect(deliveredOrSoldBy(["KS", "MS"])).toBe("branch.in.(KS,MS),sales_branch.in.(KS,MS),helper_branch.in.(KS,MS)");
   });
 
   it("branchName falls back to the code", () => {
@@ -94,5 +102,28 @@ describe("splitDocNos", () => {
   it("splits on commas, semicolons and spaces, uppercases and de-duplicates", () => {
     expect(splitDocNos("gpd-1, GPD-1;GPD-2  GPD-3")).toEqual(["GPD-1", "GPD-2", "GPD-3"]);
     expect(splitDocNos(null)).toEqual([]);
+  });
+});
+
+describe("driversForBranch", () => {
+  const gp = { id: "1", branch: "GP" };
+  const ks = { id: "2", branch: "KS" };
+  const both = { id: "3", branch: "KS,MS" };
+  const none = { id: "4", branch: null };
+  const all = [gp, ks, both, none];
+
+  it("lists only the DO branch's own drivers", () => {
+    expect(driversForBranch(all, "GP")).toEqual([gp]);
+    expect(driversForBranch(all, "MS")).toEqual([both]);
+  });
+
+  it("adds the helping branch's drivers", () => {
+    expect(driversForBranch(all, "GP", "KS")).toEqual([gp, ks, both]);
+  });
+
+  it("falls back to every driver when the branch has none, or there's no branch", () => {
+    expect(driversForBranch(all, "PT")).toBe(all);
+    expect(driversForBranch(all, null)).toBe(all);
+    expect(driversForBranch(all, "")).toBe(all);
   });
 });

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrls } from "@/app/actions";
 import { fmtDate, fmtDateTime, fmtQty } from "@/lib/format";
+import { HandOver, type HandOverInfo } from "@/components/HandOver";
 import { EVENT_LABEL, TODO_LABEL, todoLabel, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent } from "@/lib/types";
 
 /** Green "Clear" button: marks an outstanding item as done. */
@@ -37,6 +38,7 @@ export function ClearButton({ id }: { id: string }) {
  * `photo`: the DO has a proof-of-delivery photo to show.
  * `docDate`: the AutoCount Doc Date, shown under the customer.
  * `createdAt`: when the DO came into the system; shown instead when there's no Doc Date (special DOs).
+ * `handOver`: the user can assign the DO to another branch to deliver (its own branch only).
  */
 export function DoOutstanding({
   doId,
@@ -47,6 +49,7 @@ export function DoOutstanding({
   photo = false,
   createdAt,
   docDate,
+  handOver,
 }: {
   doId: string;
   doNo: string;
@@ -56,6 +59,7 @@ export function DoOutstanding({
   photo?: boolean;
   createdAt?: string;
   docDate?: string | null;
+  handOver?: HandOverInfo;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [isOpen, setOpen] = useState(false);
@@ -158,8 +162,9 @@ export function DoOutstanding({
               {history && events && <History events={events} />}
             </div>
 
-            <div className="flex justify-end border-t border-slate-100 px-5 py-3">
-              <button type="button" onClick={() => setAdding(true)} className="btn-primary">
+            <div className="flex items-end justify-between gap-3 border-t border-slate-100 px-5 py-3">
+              {handOver ? <HandOver doId={doId} {...handOver} /> : <span />}
+              <button type="button" onClick={() => setAdding(true)} className="btn-primary shrink-0">
                 Add remark
               </button>
             </div>

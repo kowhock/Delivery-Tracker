@@ -87,12 +87,13 @@ export function pickBranch(param: string | undefined, own: string | null): strin
 }
 
 /**
- * Only the delivering branch plans a DO (driver, trip, date). Staff without a
- * branch (e.g. head office) can plan any DO, and so can anyone for a DO with no branch.
+ * Only the delivering branch plans a DO (driver, trip, date), plus the branch it was
+ * handed over to (`helperBranch`), if any. Staff without a branch (e.g. head office)
+ * can plan any DO, and so can anyone for a DO with no branch.
  */
-export function canPlan(userBranch: string | null | undefined, doBranch: string | null | undefined): boolean {
+export function canPlan(userBranch: string | null | undefined, doBranch: string | null | undefined, helperBranch?: string | null): boolean {
   const mine = userBranches(userBranch);
-  return !mine.length || !doBranch || mine.includes(doBranch);
+  return !mine.length || !doBranch || mine.includes(doBranch) || (!!helperBranch && mine.includes(helperBranch));
 }
 
 /**
@@ -124,8 +125,18 @@ export function branchToSave(profile: { role: string; branch: string | null }, p
   return picked && locked.includes(picked) ? picked : locked[0];
 }
 
-/** PostgREST filter for "one of these branches delivers it or sold it". */
+/** PostgREST filter for "one of these branches delivers it, sold it or is helping deliver it". */
 export const deliveredOrSoldBy = (branches: string | string[]) => {
   const list = ([] as string[]).concat(branches).join(",");
-  return `branch.in.(${list}),sales_branch.in.(${list})`;
+  return `branch.in.(${list}),sales_branch.in.(${list}),helper_branch.in.(${list})`;
 };
+
+/**
+ * Drivers a DO's branch can pick: that branch's own (and the helping branch's, when handed
+ * over). Everyone when neither has drivers set up yet, or the DO has no branch.
+ */
+export function driversForBranch<D extends { branch: string | null }>(drivers: D[], ...branches: (string | null | undefined)[]): D[] {
+  const wanted = branches.filter((b): b is string => !!b);
+  const own = drivers.filter((d) => wanted.some((b) => userBranches(d.branch).includes(b)));
+  return own.length ? own : drivers;
+}

@@ -13,7 +13,7 @@ const TAB = "rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap";
 const TAB_ON = "bg-white text-slate-900 shadow-sm";
 const TAB_OFF = "text-slate-500 hover:text-slate-900";
 
-type Row = Outstanding & { delivery: Pick<DeliveryOrder, "do_no" | "customer_name" | "delivery_date" | "branch" | "sales_branch"> };
+type Row = Outstanding & { delivery: Pick<DeliveryOrder, "do_no" | "customer_name" | "delivery_date" | "branch" | "sales_branch" | "helper_branch"> };
 
 function href(params: Record<string, string | undefined>) {
   const qs = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1])).toString();
@@ -38,7 +38,7 @@ export default async function OutstandingPage({
   let query = supabase
     .from("do_outstanding")
     .select(
-      "*, delivery:delivery_orders!inner(do_no, customer_name, delivery_date, branch, sales_branch), creator:profiles!do_outstanding_created_by_fkey(full_name), clearer:profiles!do_outstanding_cleared_by_fkey(full_name)"
+      "*, delivery:delivery_orders!inner(do_no, customer_name, delivery_date, branch, sales_branch, helper_branch), creator:profiles!do_outstanding_created_by_fkey(full_name), clearer:profiles!do_outstanding_cleared_by_fkey(full_name)"
     )
     .order("created_at", { ascending: false })
     .limit(500);

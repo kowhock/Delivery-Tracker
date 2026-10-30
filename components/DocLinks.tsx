@@ -28,8 +28,11 @@ export function SoLinks({ job, popup = false, className = "" }: { job: Pick<Deli
   );
 }
 
-/** "PD" = branch that delivers; "for GP" = agent's branch, shown only when it's a different branch. */
-export function BranchTags({ job }: { job: Pick<DeliveryOrder, "branch" | "sales_branch"> }) {
+/**
+ * "PD" = branch that delivers; "for GP" = agent's branch, shown only when it's a different branch;
+ * "KS deliver" = the branch it was handed over to.
+ */
+export function BranchTags({ job }: { job: Pick<DeliveryOrder, "branch" | "sales_branch"> & { helper_branch?: string | null } }) {
   if (!job.branch && !job.sales_branch) return null;
   return (
     <span className="inline-flex gap-1">
@@ -41,6 +44,11 @@ export function BranchTags({ job }: { job: Pick<DeliveryOrder, "branch" | "sales
       {job.sales_branch && job.sales_branch !== job.branch && (
         <span className="rounded bg-amber-50 px-1.5 font-medium text-amber-700" title={`Sold by ${branchName(job.sales_branch)}`}>
           for {job.sales_branch}
+        </span>
+      )}
+      {job.helper_branch && (
+        <span className="rounded bg-sky-50 px-1.5 font-medium text-sky-700" title={`Assigned to ${branchName(job.helper_branch)} to deliver`}>
+          {job.helper_branch} deliver
         </span>
       )}
     </span>

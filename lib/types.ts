@@ -74,6 +74,7 @@ export type DeliveryOrder = {
   time_slot: TimeSlot | null; // optional estimated delivery window
   branch: string | null; // delivering branch
   sales_branch: string | null; // agent's branch
+  helper_branch: string | null; // another branch helping to deliver it (handed over)
   ref: string | null;
   total: number | null;
   invoice_no: string | null;

@@ -148,6 +148,7 @@ create table public.delivery_orders (
   time_slot      text check (time_slot in ('0845-1100', '1100-1300', '1300-1500', '1500-1700', '1700-1900', '1900-2100')), -- optional estimated delivery window
   branch         text,                         -- delivering branch, from the DO number prefix (GPD → GP)
   sales_branch   text,                         -- agent's branch, from Sales Location; follows the DO too
+  helper_branch  text,                         -- another branch helping to deliver it: sees it, picks its driver
   ref            text,                         -- AutoCount Ref. (customer PO etc.)
   total          numeric(14, 2),
   invoice_no     text,                         -- AutoCount Transfer To (invoice)

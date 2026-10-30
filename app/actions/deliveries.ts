@@ -5,9 +5,9 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
-import { branchFromDoNo, branchToSave, canPlan } from "@/lib/branches";
+import { BRANCHES, branchFromDoNo, branchName, branchToSave, canPlan } from "@/lib/branches";
 import { TIME_SLOTS, type DoStatus } from "@/lib/types";
-import { nextTrip, notYourBranch } from "./_shared";
+import { checkBranchDriver, nextTrip, notYourBranch } from "./_shared";
 
 // ---------- Delivery orders (staff) ----------------------------------
 
@@ -20,6 +20,8 @@ export async function createSpecialDo(formData: FormData) {
   const date = get("delivery_date") ?? todayMY();
   if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
   if (!Number.isInteger(points) || points < 0 || points > 99) throw new Error("Points must be a whole number from 0 to 99.");
+  const branch = branchToSave(profile, get("branch")); // dispatchers always create for one of their own branches
+  if (driverId) await checkBranchDriver(supabase, driverId, branch);
 
   const { data: d, error } = await supabase
     .from("delivery_orders")
@@ -28,7 +30,7 @@ export async function createSpecialDo(formData: FormData) {
       address: get("address"),
       contact_phone: get("contact_phone"),
       delivery_date: date,
-      branch: branchToSave(profile, get("branch")), // dispatchers always create for one of their own branches
+      branch,
       driver_id: driverId,
       ...(driverId ? { trip_no: await nextTrip(supabase, driverId, date) } : {}),
       status: driverId ? "assigned" : "pending",
@@ -56,7 +58,7 @@ async function ownSpecialDo(id: string) {
   const s = await requireStaff();
   const { data: d } = await s.supabase
     .from("delivery_orders")
-    .select("id, do_no, source, status, driver_id, delivery_date, created_by")
+    .select("id, do_no, source, status, driver_id, delivery_date, helper_branch, created_by")
     .eq("id", id)
     .single();
   if (!d || d.source !== "special") throw new Error("Special DO not found.");
@@ -76,6 +78,9 @@ export async function updateSpecialDo(id: string, formData: FormData) {
 
   // A new driver (or none) resets the status like Assign does; same driver keeps it.
   const driverChanged = driverId !== d.driver_id;
+  const branch = branchToSave(profile, get("branch"));
+  // Only a newly picked driver must be the branch's; one it already had stays.
+  if (driverId && driverChanged) await checkBranchDriver(supabase, driverId, branch, d.helper_branch);
   const newTrip = driverId && (driverChanged || date !== d.delivery_date) ? { trip_no: await nextTrip(supabase, driverId, date, id), trip_seq: 0 } : {};
   const { error } = await supabase
     .from("delivery_orders")
@@ -84,7 +89,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       address: get("address"),
       contact_phone: get("contact_phone"),
       delivery_date: date,
-      branch: branchToSave(profile, get("branch")),
+      branch,
       driver_id: driverId,
       ...(driverChanged ? { status: driverId ? "assigned" : "pending", failed_reason: null } : {}),
       ...newTrip,
@@ -204,11 +209,11 @@ export async function assignDriver(formData: FormData) {
 
   const { data: current } = await supabase
     .from("delivery_orders")
-    .select("so_id, status, branch, driver_id, delivery_date")
+    .select("so_id, status, branch, helper_branch, driver_id, delivery_date")
     .eq("id", doId)
     .single();
   if (!current) return;
-  if (!canPlan(profile.branch, current.branch)) throw new Error(notYourBranch(current.branch));
+  if (!canPlan(profile.branch, current.branch, current.helper_branch)) throw new Error(notYourBranch(current.branch));
 
   let status: DoStatus = current.status;
   if (["pending", "assigned", "failed"].includes(current.status)) status = driverId ? "assigned" : "pending";
@@ -258,10 +263,10 @@ export async function moveToDate(doIds: string[], date: string) {
 
   const { data } = await supabase
     .from("delivery_orders")
-    .select("id, so_id, status, driver_id, delivery_date, branch")
+    .select("id, so_id, status, driver_id, delivery_date, branch, helper_branch")
     .in("id", doIds.slice(0, 200));
   const rows = (data ?? []).filter(
-    (d) => ["pending", "assigned", "failed"].includes(d.status) && canPlan(profile.branch, d.branch) && d.delivery_date !== date
+    (d) => ["pending", "assigned", "failed"].includes(d.status) && canPlan(profile.branch, d.branch, d.helper_branch) && d.delivery_date !== date
   );
 
   for (const withDriver of [true, false]) {
@@ -300,12 +305,12 @@ export async function redeliver(doId: string) {
   const { supabase, profile } = await requireStaff();
   const { data: d } = await supabase
     .from("delivery_orders")
-    .select("so_id, status, branch, driver_id, delivery_date, trip_no")
+    .select("so_id, status, branch, helper_branch, driver_id, delivery_date, trip_no")
     .eq("id", doId)
     .single();
   if (!d) throw new Error("DO not found.");
   if (d.status !== "failed") throw new Error("Only failed DOs can be redelivered.");
-  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (!canPlan(profile.branch, d.branch, d.helper_branch)) throw new Error(notYourBranch(d.branch ?? ""));
 
   const today = todayMY();
   const date = d.delivery_date < today ? today : d.delivery_date;
@@ -335,10 +340,10 @@ export async function redeliver(doId: string) {
  */
 export async function setCollected(doId: string, collected: boolean, at: string | null = null) {
   const { supabase, profile } = await requireStaff();
-  const { data: d } = await supabase.from("delivery_orders").select("so_id, status, branch, is_oc").eq("id", doId).single();
+  const { data: d } = await supabase.from("delivery_orders").select("so_id, status, branch, helper_branch, is_oc").eq("id", doId).single();
   if (!d) throw new Error("DO not found.");
   if (!d.is_oc) throw new Error("Only O/C DOs can be marked collected.");
-  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (!canPlan(profile.branch, d.branch, d.helper_branch)) throw new Error(notYourBranch(d.branch ?? ""));
 
   let when: string | null = null;
   if (collected && at) {
@@ -367,13 +372,48 @@ export async function setCollected(doId: string, collected: boolean, at: string 
 export async function setTimeSlot(doId: string, slot: string | null) {
   const { supabase, profile } = await requireStaff();
   if (slot != null && !(slot in TIME_SLOTS)) throw new Error("Pick a time slot.");
-  const { data: d } = await supabase.from("delivery_orders").select("branch").eq("id", doId).single();
+  const { data: d } = await supabase.from("delivery_orders").select("branch, helper_branch").eq("id", doId).single();
   if (!d) throw new Error("DO not found.");
-  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (!canPlan(profile.branch, d.branch, d.helper_branch)) throw new Error(notYourBranch(d.branch ?? ""));
   const { error } = await supabase.from("delivery_orders").update({ time_slot: slot }).eq("id", doId);
   if (error) throw new Error(error.message);
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
   revalidatePath("/driver");
   revalidatePath("/orders/[id]", "page");
+}
+
+/**
+ * Hands a DO over to another branch, which helps deliver it: that branch then sees it and
+ * picks its driver, while the DO's own branch keeps seeing (and planning) it. null takes it back.
+ * Only the DO's own branch hands over, and only while no driver is on it, so a driver is never
+ * left on a DO their branch can no longer see. Points stay measured from the DO's own store.
+ */
+export async function setHelperBranch(doId: string, helper: string | null) {
+  const { supabase, profile } = await requireStaff();
+  const { data: d } = await supabase
+    .from("delivery_orders")
+    .select("so_id, status, branch, helper_branch, driver_id, is_oc, cancelled")
+    .eq("id", doId)
+    .single();
+  if (!d) throw new Error("DO not found.");
+  if (!d.branch) throw new Error("This DO has no branch, so any branch can plan it already.");
+  if (!canPlan(profile.branch, d.branch)) throw new Error(`Only ${branchName(d.branch)} can hand this DO over.`);
+  if (helper !== null && (helper === d.branch || !BRANCHES.some((b) => b.code === helper && b.store))) throw new Error("Pick another branch.");
+  if (helper === d.helper_branch) return;
+  if (d.cancelled) throw new Error("This DO is cancelled in AutoCount.");
+  if (d.is_oc) throw new Error("O/C DOs are collected at the store, so they can't be handed over.");
+  if (!["pending", "assigned", "failed"].includes(d.status)) throw new Error("This DO is already on the road or delivered.");
+  if (d.driver_id) throw new Error("Take the driver off this DO first.");
+
+  const { error } = await supabase.from("delivery_orders").update({ helper_branch: helper }).eq("id", doId);
+  if (error) throw new Error(error.message);
+  await supabase.from("status_events").insert({
+    so_id: d.so_id,
+    do_id: doId,
+    status: d.status,
+    note: helper ? `Handed over to ${branchName(helper)} to deliver` : `Taken back from ${branchName(d.helper_branch)}`,
+  });
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
 }
