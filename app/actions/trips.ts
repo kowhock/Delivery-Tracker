@@ -5,7 +5,7 @@ import { requireStaff } from "@/lib/auth";
 import { bestRoute } from "@/lib/geo";
 import { branchName, canPlan, storeAddress } from "@/lib/branches";
 import type { DoStatus } from "@/lib/types";
-import { parseTime } from "@/lib/format";
+import { parseTime, todayMY } from "@/lib/format";
 import { nextTrip, notYourBranch } from "./_shared";
 
 // ---------- Trip planning (Driver status page) -----------------------
@@ -164,6 +164,7 @@ export async function recordTripFormDo(input: { driverId: string; date: string; 
   const doNo = input.doNo.trim().toUpperCase();
   if (!doNo) throw new Error("Type the DO number.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error("Invalid date");
+  if (input.date > todayMY()) throw new Error("Deliveries can't be recorded for a future day.");
   const timeBack = parseTime(input.timeBack);
   if (!timeBack) throw new Error("Type the time back, e.g. 14:30 or 2.30pm.");
   const timeIn = input.timeIn.trim() ? parseTime(input.timeIn) : null;

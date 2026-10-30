@@ -107,7 +107,7 @@ export function DoOutstanding({
                 {docDate ? (
                   <p className="text-xs text-slate-400">Doc date {fmtDate(docDate)}</p>
                 ) : (
-                  createdAt && <p className="text-xs text-slate-400">Created {fmtDateTime(createdAt)}</p>
+                  createdAt && <p className="text-xs text-slate-400">Created {fmtDate(createdAt)}</p>
                 )}
               </div>
               <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
