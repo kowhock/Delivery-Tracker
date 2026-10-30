@@ -28,7 +28,7 @@ export const BRANCHES = [
   },
   {
     code: "PT", name: "Pontian", doPrefix: "PTD", icbPrefix: "M-PT", soPrefix: "PTS", locations: ["PT", "PTS"],
-    store: "J46, Jalan Ulu Pulai, Kampung Parit Kassim, 82000 Pontian, Johor",
+    store: "Lot 3863, Batu 32, Jalan Johor, 82000 Pontian, Johor, Malaysia",
   },
   {
     // TODO: soPrefix / locations guessed from the DO prefix (SND) — check against AutoCount.
