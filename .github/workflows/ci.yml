@@ -1,0 +1,25 @@
+# Runs on every push and pull request: the same checks to run locally before committing
+# (npm run typecheck && npm test && npm run build). A red ✗ on GitHub means one of them failed.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # The build never connects to Supabase, so placeholders are enough (real values live in Vercel).
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder

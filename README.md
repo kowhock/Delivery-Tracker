@@ -14,12 +14,15 @@ Built with Next.js, Supabase and Tailwind.
 | `/deliveries` | office | Board of DOs by status (today by default), assign drivers, updates live |
 | `/drivers` | office | Driver status: each driver's orders from date to date, split into trips; drag orders to plan trips. Opens on your own branch's drivers; switch branch with the dropdown |
 | `/lorries` | office | Each lorry's driver and what it's doing today; change driver (asks first if the lorry or driver is taken), book maintenance, history |
-| `/trip-form` | office | A driver's daily (one day) or monthly (date range) trip form with points and commission; PDF via print, or Excel |
-| `/orders` | office | SO list with search, status and date filters |
-| `/orders/[id]` | office | SO detail with AutoCount fields, its DOs (one SO can have many), POD photos, timeline |
+| `/trip-form` | office | A driver's daily (one day) or monthly (date range) trip form with points and commission; PDF via print, or Excel. A DO the driver didn't mark in the app can be typed into an empty box and saved to that day |
+| `/outstanding` | office | Notes on DOs that still need something done (CN, edit DO, …), until cleared |
+| `/orders` | admins | SO list with search, status and date filters (SOs aren't synced from the API yet — see below) |
+| `/orders/[id]` | admins | SO detail with AutoCount fields, its DOs (one SO can have many), POD photos, timeline |
 | `/driver` | drivers | Phone view: today's jobs, Waze/Maps/Call, start → delivered with photo, or failed with reason, WhatsApp buttons |
 
-Roles: **admin** and **dispatcher** see everything. **driver** only sees their own jobs.
+Roles: **admin** sees and plans everything. **dispatcher** (office staff) with branches set on their
+profile (`KS` or `KS,MS`) sees only those branches and plans only DOs their branches deliver; without a
+branch they see everything. **driver** only sees their own jobs.
 
 ## Setup (about 15 minutes)
 
@@ -46,11 +49,12 @@ Roles: **admin** and **dispatcher** see everything. **driver** only sees their o
    ```bash
    npm run dev
    ```
-   Open http://localhost:3000, sign in, go to **Import** and upload the SO and DO listings exported from AutoCount.
+   Open http://localhost:3000 and sign in. DOs arrive from the AutoCount sync (below).
 
 ## Deploy
 
-Push to GitHub → import the repo on [vercel.com](https://vercel.com) → add the same three env variables → Deploy.
+Push to GitHub → import the repo on [vercel.com](https://vercel.com) → add the env variables from `.env.example`
+(not the AutoCount or sync ones, those are only for the office PC) → Deploy.
 Drivers open the link on their phone and use **Add to Home Screen** (Safari share menu on iPhone, ⋮ menu in Chrome on Android) so it behaves like an app.
 
 ## WhatsApp from the company number (optional)
@@ -110,18 +114,26 @@ If `git pull` fails (usually because a file was edited on the office PC), run `g
 then `git checkout -- <file>` to throw that edit away and pull again. Task Scheduler doesn't need changing
 when the code changes.
 
-## How data gets in (and where AutoCount plugs in later)
+## How data gets in
 
-Everything goes through `importAcSalesOrders()` / `importAcDeliveryOrders()` in `lib/autocount.ts`,
-which take AutoCount documents in the shape defined in `lib/autocount-rows.ts`.
-- The Import page parses the Excel export into that shape in the browser and calls them.
-- Later, the AutoCount API sync should map its data to the same types and call the same functions.
-- Documents are matched by Doc. No.: importing again updates AutoCount's fields but never the driver, trip,
-  delivery status or delivery date set in this app.
-- SO ↔ DO is many-to-many (`do_sales_orders`), taken from DO "Transfer From" and SO "Transfer To".
-  Import order doesn't matter; links fill in when the other side arrives.
-- Branches: DO prefix = delivering branch (GPD → GP …), Sales Location = agent's branch. Mapping in `lib/branches.ts`.
-- Item lines aren't imported yet: every new SO/DO gets a test item (`TEST_ITEM` in `lib/autocount.ts`).
+The AutoCount sync (`scripts/autocount-sync.ts`) reads two kinds of documents and saves both as DOs
+through `importAcDeliveryOrders()` in `lib/autocount.ts`:
+- **Delivery orders** (`deliveryorder/select`): GPD-, PDD-, KSD-… The prefix is the delivering branch.
+- **Inter-company invoices** (`invoice/select`): only Doc. Nos starting with `M-` (`M-PT-00000483` is a
+  PT delivery). Between the group's companies the branches deliver on these instead of a DO. Every other invoice is ignored.
+
+Rules:
+- Matched by Doc. No., so syncing again updates AutoCount's fields but never the driver, trip,
+  status or delivery date set in this app. `doc_date` keeps AutoCount's Doc Date.
+- Branches: DO prefix / `M-<branch>` = delivering branch, Sales Location = agent's branch. Mapping in `lib/branches.ts`.
+- One-time backfill: `npm run autocount:sync -- --days 14` (goes one day at a time, because the API slows
+  down on long results; days that fail are listed at the end so they can be run again).
+
+What the IPS AutoCount API doesn't send (asked for; the app fills them in once it does):
+- item lines on invoices (`M-` DOs have no items), created time and created user, Transfer From / To
+  (so SO ↔ DO links and SOs aren't synced yet), and the ICB fields.
+
+`importAcSalesOrders()` is kept for the SO sync (`salesorder/select`) still to be built.
 
 ## Things to customise
 
@@ -130,8 +142,20 @@ which take AutoCount documents in the shape defined in `lib/autocount-rows.ts`.
 - Accent colour: `--color-brand-*` in `app/globals.css`
 - Special DO numbering (`SDO-000001`): the `do_no` default in `supabase/schema.sql`
 
+## Development
+
+Before every commit, run the same checks GitHub runs on every push (`.github/workflows/ci.yml`):
+```bash
+npm run typecheck && npm test && npm run build
+```
+- Business rules live in `lib/` with tests next to them (`*.test.ts`); server actions are in `app/actions/`, one file per area.
+- Database changes: write them in `supabase/upgrade.sql`, run it in Supabase → SQL Editor, copy them into
+  `schema.sql`, then empty `upgrade.sql` (steps at the top of that file). If the change goes with sync changes,
+  run the SQL **before** the office PC pulls the new code.
+- Commit messages start with what kind of change it is: `feat:`, `fix:`, `ui:`, `api:`, `refactor:`, `docs:`, `chore:`.
+
 ## Next ideas
 
-- Automatic WhatsApp messages (Meta WhatsApp Cloud API) instead of tap-to-send buttons
-- AutoCount sync script
+- Sales order sync from the API (`salesorder/select`)
 - Reports: on-time rate per driver, failed deliveries by reason
+- An alert when the office PC sync stops (`sync_status` older than ~15 minutes)
