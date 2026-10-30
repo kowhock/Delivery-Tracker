@@ -10,7 +10,7 @@ import { fmtDate, mapAddress } from "@/lib/format";
 import { withTripPoints } from "@/lib/commission";
 import { TIME_SLOTS, type DeliveryOrder, type DoStatus } from "@/lib/types";
 
-type Driver = { id: string; full_name: string; branch: string | null; lorry_no: string | null };
+type Driver = { id: string; full_name: string; real_name?: string | null; branch: string | null; lorry_no: string | null };
 /** Delivered DOs in the shown dates (by delivery time), with points and commission. */
 export type DriverStats = { delivered: number; points: number; missingPoints: number; rm: number };
 type Lane = { driverId: string; date: string; tripNo: number };
@@ -238,7 +238,7 @@ export function DriverTrips({
                     <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">Lorry {d.lorry_no}</span>
                   )}
                 </h2>
-                {d.branch && <p className="text-xs text-slate-500">{d.branch}</p>}
+                {(d.branch || d.real_name) && <p className="text-xs text-slate-500">{[d.branch, d.real_name].filter(Boolean).join(" · ")}</p>}
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-3 text-sm text-slate-500">
                 {stats[d.id] && (

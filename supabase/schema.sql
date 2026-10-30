@@ -15,7 +15,8 @@ create type public.do_status as enum ('pending', 'assigned', 'out_for_delivery',
 -- ---------- Users / roles --------------------------------------------
 create table public.profiles (
   id         uuid primary key references auth.users on delete cascade,
-  full_name  text not null default '',
+  full_name  text not null default '',       -- display name shown in the app
+  real_name  text,                           -- real (legal) name, for admin reference only
   phone      text,
   role       public.user_role not null default 'driver',
   branch     text,                           -- GP, PD, …; pages open on this branch first

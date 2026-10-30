@@ -28,10 +28,10 @@ export default async function DriversPage({
   // (dispatchers stay on their own branches).
   const { data: driverRows } = await supabase
     .from("profiles")
-    .select("id, full_name, branch, lorry_no")
+    .select("id, full_name, real_name, branch, lorry_no")
     .eq("role", "driver")
     .order("full_name");
-  const allDrivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "branch" | "lorry_no">[];
+  const allDrivers = (driverRows ?? []) as Pick<Profile, "id" | "full_name" | "real_name" | "branch" | "lorry_no">[];
   const locked = lockedBranches(profile);
   const branch = pageBranch(sp.branch, profile);
   const branches = locked ?? [...new Set([...allDrivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();

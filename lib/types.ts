@@ -30,7 +30,7 @@ export const TIME_SLOTS = {
 } as const;
 export type TimeSlot = keyof typeof TIME_SLOTS;
 
-export type Profile = { id: string; full_name: string; role: Role; phone: string | null; branch: string | null; lorry_no: string | null };
+export type Profile = { id: string; full_name: string; real_name: string | null; role: Role; phone: string | null; branch: string | null; lorry_no: string | null };
 
 export type SalesOrder = {
   id: string;

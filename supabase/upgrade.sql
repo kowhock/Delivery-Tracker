@@ -8,3 +8,7 @@
 --
 -- Changes before 2026-10-30 are in git history (git log -p supabase/upgrade.sql).
 -- =====================================================================
+
+-- 2026-10-30: the person's real (legal) name, for admin reference only. full_name stays the
+-- display name shown in the app; login (username) and every rule are unchanged.
+alter table public.profiles add column if not exists real_name text;
