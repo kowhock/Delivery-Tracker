@@ -4,17 +4,20 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireStaff } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
-import { branchName, branchToSave, canPlan } from "@/lib/branches";
+import { BRANCHES, branchName, branchToSave, canPlan, userBranches } from "@/lib/branches";
 
 // ---------- Lorries ---------------------------------------------------
 
 const notYourLorry = (branch: string) => `This lorry belongs to ${branchName(branch)} — only ${branchName(branch)} can change it.`;
 
-async function lorryForEdit(supabase: SupabaseClient, profile: { branch: string | null }, id: string) {
-  const { data: l } = await supabase.from("lorries").select("id, lorry_no, branch, driver_id").eq("id", id).single();
+type LorryRow = { id: string; lorry_no: string; branch: string | null; driver_id: string | null; borrow_branch: string | null };
+
+/** The lorry, if the user's branch owns it — or, with `borrower`, has borrowed it (driver changes only). */
+async function lorryForEdit(supabase: SupabaseClient, profile: { branch: string | null }, id: string, borrower = false) {
+  const { data: l } = await supabase.from("lorries").select("id, lorry_no, branch, driver_id, borrow_branch").eq("id", id).single();
   if (!l) throw new Error("Lorry not found.");
-  if (!canPlan(profile.branch, l.branch)) throw new Error(notYourLorry(l.branch));
-  return l as { id: string; lorry_no: string; branch: string | null; driver_id: string | null };
+  if (!canPlan(profile.branch, l.branch, borrower ? l.borrow_branch : null)) throw new Error(notYourLorry(l.branch));
+  return l as LorryRow;
 }
 
 function revalidateLorries() {
@@ -49,7 +52,7 @@ export async function saveLorry(formData: FormData): Promise<{ error?: string }>
 /** Puts a driver on a lorry (or takes them off with null). A driver drives one lorry, so they leave their old one. */
 export async function setLorryDriver(lorryId: string, driverId: string | null) {
   const { supabase, profile } = await requireStaff();
-  const lorry = await lorryForEdit(supabase, profile, lorryId);
+  const lorry = await lorryForEdit(supabase, profile, lorryId, true); // the branch borrowing it can change its driver too
   if (lorry.driver_id === driverId) return;
 
   const names = new Map<string, string>();
@@ -110,5 +113,36 @@ export async function endMaintenance(lorryId: string) {
     .eq("id", lorry.id);
   if (error) throw new Error(error.message);
   await supabase.from("lorry_events").insert({ lorry_id: lorry.id, note: "Back in service" });
+  revalidateLorries();
+}
+
+/**
+ * "Borrow to": lends the lorry to another branch, which then sees it and can put its own driver on it.
+ * null = Take back; a driver from the borrowing branch still on it is taken off. Owning branch only.
+ */
+export async function setLorryBorrow(lorryId: string, to: string | null) {
+  const { supabase, profile } = await requireStaff();
+  const lorry = await lorryForEdit(supabase, profile, lorryId);
+  if (!lorry.branch) throw new Error("Give this lorry a branch first.");
+  if (to !== null && (to === lorry.branch || !BRANCHES.some((b) => b.code === to && b.store))) throw new Error("Pick another branch.");
+  if (to === lorry.borrow_branch) return;
+
+  // Taking back: the borrowing branch's driver comes off (the owning branch's own drivers stay).
+  let driverOff: string | null = null;
+  if (to === null && lorry.driver_id) {
+    const { data: d } = await supabase.from("profiles").select("full_name, branch").eq("id", lorry.driver_id).single();
+    if (d && !userBranches(d.branch).includes(lorry.branch)) driverOff = d.full_name;
+  }
+  const { error } = await supabase
+    .from("lorries")
+    .update({ borrow_branch: to, ...(driverOff !== null ? { driver_id: null } : {}) })
+    .eq("id", lorry.id);
+  if (error) throw new Error(error.message);
+  await supabase.from("lorry_events").insert({
+    lorry_id: lorry.id,
+    note: to
+      ? `Borrow to ${branchName(to)}`
+      : `Taken back from ${branchName(lorry.borrow_branch)}${driverOff !== null ? ` · ${driverOff} taken off` : ""}`,
+  });
   revalidateLorries();
 }

@@ -170,6 +170,7 @@ export type Lorry = {
   maintenance_from: string | null; // set = under (or booked for) maintenance from this day
   maintenance_to: string | null; // expected back; null = not known yet
   maintenance_note: string | null;
+  borrow_branch: string | null; // "Borrow to": lent to this branch, which can put its own driver on it
 };
 
 /** "JQN 9833 (46)", as on the trip forms; just "46" without a plate. */

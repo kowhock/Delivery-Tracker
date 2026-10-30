@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { endMaintenance, saveLorry, setLorryDriver, setMaintenance } from "@/app/actions";
-import { BRANCHES, branchName } from "@/lib/branches";
+import { endMaintenance, saveLorry, setLorryBorrow, setLorryDriver, setMaintenance } from "@/app/actions";
+import { BRANCHES, branchName, canPlan, userBranches } from "@/lib/branches";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { inMaintenance, type Lorry } from "@/lib/types";
 
@@ -73,6 +73,7 @@ export function Lorries({
   today,
   branch,
   lockedBranches,
+  myBranch,
 }: {
   lorries: Lorry[];
   allLorries: Lorry[]; // every branch's, to tell which lorry a driver is on now
@@ -82,13 +83,23 @@ export function Lorries({
   today: string;
   branch: string | null;
   lockedBranches: string[] | null; // dispatchers: the branches they can put a lorry under
+  myBranch: string | null; // the user's branch(es): owners edit a lorry, a branch it's borrowed to only picks its driver
 }) {
   const [editing, setEditing] = useState<Lorry | "new" | null>(null);
   const [servicing, setServicing] = useState<Lorry | null>(null);
+  const [borrowing, setBorrowing] = useState<Lorry | null>(null);
+  const [takingBack, setTakingBack] = useState<Lorry | null>(null);
   const [confirm, setConfirm] = useState<{ lorry: Lorry; driverId: string | null; lines: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const name = (id: string | null) => drivers.find((d) => d.id === id)?.full_name ?? "a driver";
+  // The owning branch edits a lorry; a branch it's borrowed to only sees it and picks its driver.
+  const owns = (l: Lorry) => canPlan(myBranch, l.branch);
+  /** The borrowing branch's driver on it, who comes off when the lorry is taken back. */
+  const borrowerDriver = (l: Lorry) => {
+    const d = l.driver_id && l.branch ? drivers.find((x) => x.id === l.driver_id) : undefined;
+    return d && !userBranches(d.branch).includes(l.branch!) ? d : undefined;
+  };
 
   function run(fn: () => Promise<unknown>) {
     setError(null);
@@ -148,6 +159,7 @@ export function Lorries({
         { header: "Maintenance from", key: "from", width: 16 },
         { header: "Back in service", key: "to", width: 16 },
         { header: "Maintenance note", key: "note", width: 28 },
+        { header: "Borrow to", key: "borrow", width: 14 },
       ];
       ws.getRow(1).font = { bold: true };
       for (const l of sorted) {
@@ -160,6 +172,7 @@ export function Lorries({
           from: l.maintenance_from ? fmtDate(l.maintenance_from) : "",
           to: l.maintenance_to ? fmtDate(l.maintenance_to) : "",
           note: l.maintenance_note ?? "",
+          borrow: l.borrow_branch ? branchName(l.borrow_branch) : "",
         });
       }
       const buf = await wb.xlsx.writeBuffer();
@@ -177,7 +190,7 @@ export function Lorries({
 
   /** The driver dropdown, the same in both views. */
   function driverSelect(l: Lorry) {
-    const choices = drivers.filter((d) => !l.branch || !d.branch || d.branch === l.branch || d.id === l.driver_id);
+    const choices = drivers.filter((d) => !l.branch || !d.branch || d.branch === l.branch || d.branch === l.borrow_branch || d.id === l.driver_id);
     return (
       <select
         disabled={pending}
@@ -200,20 +213,42 @@ export function Lorries({
     );
   }
 
+  /** "Borrow to KS" on the owner's side, "Borrow from GP" on the borrower's. */
+  function borrowTag(l: Lorry) {
+    if (!l.borrow_branch) return null;
+    return (
+      <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
+        {owns(l) ? `Borrow to ${l.borrow_branch}` : `Borrow from ${l.branch}`}
+      </span>
+    );
+  }
+
+  /** Maintenance and Borrow to / Take back: the owning branch only. */
   function maintenanceButtons(l: Lorry) {
+    if (!owns(l)) return null;
+    const borrow = l.borrow_branch ? (
+      <button type="button" disabled={pending} onClick={() => setTakingBack(l)} className="btn-secondary py-1.5 text-xs">
+        ↩ Take back
+      </button>
+    ) : (
+      <button type="button" disabled={pending || !l.branch} onClick={() => setBorrowing(l)} className="btn-secondary py-1.5 text-xs">
+        Borrow to
+      </button>
+    );
     return l.maintenance_from ? (
       <>
         <button type="button" disabled={pending} onClick={() => run(() => endMaintenance(l.id))} className="btn-secondary py-1.5 text-xs">
           ✅ Back in service
         </button>
-        <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
-          Change dates
-        </button>
+        {borrow}
       </>
     ) : (
-      <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
-        🔧 Maintenance
-      </button>
+      <>
+        <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
+          🔧 Maintenance
+        </button>
+        {borrow}
+      </>
     );
   }
 
@@ -270,7 +305,10 @@ export function Lorries({
                   <td className="whitespace-nowrap px-4 py-2">{l.plate_no || <span className="text-slate-400">—</span>}</td>
                   <td className="whitespace-nowrap px-4 py-2">{l.branch ? branchName(l.branch) : <span className="text-slate-400">—</span>}</td>
                   <td className="px-4 py-2">
-                    <StatusBadge lorry={l} jobs={l.driver_id ? jobs[l.driver_id] : undefined} today={today} />
+                    <div className="flex flex-wrap gap-1.5">
+                      <StatusBadge lorry={l} jobs={l.driver_id ? jobs[l.driver_id] : undefined} today={today} />
+                      {borrowTag(l)}
+                    </div>
                     {l.maintenance_from && l.maintenance_from > today && (
                       <p className="mt-1 text-xs text-amber-700">Maintenance from {fmtDate(l.maintenance_from)}</p>
                     )}
@@ -280,9 +318,11 @@ export function Lorries({
                   <td className="px-4 py-2">
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       {maintenanceButtons(l)}
-                      <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
-                        Edit
-                      </button>
+                      {owns(l) && (
+                        <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+                          Edit
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -304,13 +344,16 @@ export function Lorries({
                       {l.branch && ` · ${branchName(l.branch)}`}
                     </p>
                   </div>
-                  <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
-                    Edit
-                  </button>
+                  {owns(l) && (
+                    <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+                      Edit
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   <StatusBadge lorry={l} jobs={l.driver_id ? jobs[l.driver_id] : undefined} today={today} />
+                  {borrowTag(l)}
                   {booked && (
                     <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
                       Maintenance from {fmtDate(l.maintenance_from)}
@@ -325,7 +368,7 @@ export function Lorries({
 
                 {l.maintenance_note && inMaintenance(l, today) && <p className="text-sm text-amber-800">🔧 {l.maintenance_note}</p>}
 
-                <div className="flex flex-wrap gap-2">{maintenanceButtons(l)}</div>
+                {owns(l) && <div className="flex flex-wrap gap-2">{maintenanceButtons(l)}</div>}
 
                 {(events[l.id]?.length ?? 0) > 0 && (
                   <details className="text-sm">
@@ -373,6 +416,33 @@ export function Lorries({
               className="btn-primary"
             >
               Yes, change
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {borrowing && <BorrowForm lorry={borrowing} onClose={() => setBorrowing(null)} onSave={(to) => run(() => setLorryBorrow(borrowing.id, to))} />}
+
+      {takingBack && (
+        <Modal title="Take back?" subtitle={`Lorry ${takingBack.lorry_no} · borrowed to ${branchName(takingBack.borrow_branch)}`} onClose={() => setTakingBack(null)}>
+          <p>
+            Lorry {takingBack.lorry_no} comes back to {branchName(takingBack.branch)}
+            {borrowerDriver(takingBack) ? `, and ${borrowerDriver(takingBack)!.full_name} (${branchName(takingBack.borrow_branch)}) is taken off it` : ""}.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setTakingBack(null)} className="btn-secondary">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const l = takingBack;
+                setTakingBack(null);
+                run(() => setLorryBorrow(l.id, null));
+              }}
+              className="btn-primary"
+            >
+              Yes, take back
             </button>
           </div>
         </Modal>
@@ -440,6 +510,40 @@ function MaintenanceForm({ lorry, driver, today, onClose }: { lorry: Lorry; driv
           </button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+/** "Borrow to": pick the branch the lorry is lent to. */
+function BorrowForm({ lorry, onClose, onSave }: { lorry: Lorry; onClose: () => void; onSave: (to: string) => void }) {
+  const [to, setTo] = useState("");
+  return (
+    <Modal title="Borrow to" subtitle={`Lorry ${lorry.lorry_no}${lorry.plate_no ? ` · ${lorry.plate_no}` : ""}`} onClose={onClose}>
+      <label className="block">
+        <span className="label">Branch</span>
+        <select value={to} onChange={(e) => setTo(e.target.value)} className="input">
+          <option value="" disabled>Choose branch…</option>
+          {BRANCHES.filter((b) => b.store && b.code !== lorry.branch).map((b) => (
+            <option key={b.code} value={b.code}>{b.name}</option>
+          ))}
+        </select>
+      </label>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="btn-secondary">
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!to}
+          onClick={() => {
+            onSave(to);
+            onClose();
+          }}
+          className="btn-primary"
+        >
+          Borrow to
+        </button>
+      </div>
     </Modal>
   );
 }

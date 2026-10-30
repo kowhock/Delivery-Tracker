@@ -21,3 +21,7 @@ alter table public.delivery_orders add column if not exists helper_branch text;
 -- 2026-10-30: Supplier delivery — the supplier delivers the DO, so it has no driver (no points)
 -- and is delivered as soon as staff pick it. It has its own column on Deliveries, not Unassigned.
 alter table public.delivery_orders add column if not exists supplier_delivery boolean not null default false;
+
+-- 2026-10-30: "Borrow to" — a lorry lent to another branch. That branch sees it on Lorries and can
+-- put its own driver on it; the owning branch keeps it (maintenance, Take back). Nothing else changes.
+alter table public.lorries add column if not exists borrow_branch text;

@@ -60,6 +60,7 @@ create table public.lorries (
   plate_no         text,                       -- e.g. "JQN 9833"
   branch           text,
   driver_id        uuid unique references public.profiles on delete set null,
+  borrow_branch    text,                       -- "Borrow to": lent to this branch, which can put its driver on it
   maintenance_from date,                       -- set = under (or booked for) maintenance from this day
   maintenance_to   date,                       -- expected back; null = not known yet
   maintenance_note text,

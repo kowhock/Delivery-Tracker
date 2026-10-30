@@ -24,10 +24,11 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
   const branches =
     locked ??
     [...new Set([...BRANCHES.filter((b) => b.store).map((b) => b.code), ...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
+  // A branch's own lorries, plus ones borrowed to it ("Borrow to").
   const lorries = branch
-    ? allLorries.filter((l) => l.branch === branch)
+    ? allLorries.filter((l) => l.branch === branch || l.borrow_branch === branch)
     : locked
-      ? allLorries.filter((l) => l.branch && locked.includes(l.branch))
+      ? allLorries.filter((l) => [l.branch, l.borrow_branch].some((b) => b && locked.includes(b)))
       : allLorries;
 
   // What each lorry's driver is doing today, and the lorry's latest history.
@@ -96,6 +97,7 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
         today={today}
         branch={branch || null}
         lockedBranches={locked}
+        myBranch={profile.branch}
       />
     </div>
   );
