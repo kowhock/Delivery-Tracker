@@ -1,5 +1,5 @@
 import { requireStaff } from "@/lib/auth";
-import { branchName, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
+import { BRANCHES, branchName, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { todayMY } from "@/lib/format";
 import type { Lorry, Profile } from "@/lib/types";
 import { Lorries, type LorryJobs, type LorryEvent } from "@/components/Lorries";
@@ -20,7 +20,10 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
   // Same branch picker as Driver status (dispatchers stay on their own branches).
   const locked = lockedBranches(profile);
   const branch = pageBranch(sp.branch, profile);
-  const branches = locked ?? [...new Set([...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
+  // Every store branch is listed, even one with no lorries or drivers yet (so its first lorry can be added).
+  const branches =
+    locked ??
+    [...new Set([...BRANCHES.filter((b) => b.store).map((b) => b.code), ...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
   const lorries = branch
     ? allLorries.filter((l) => l.branch === branch)
     : locked
