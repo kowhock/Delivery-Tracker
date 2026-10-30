@@ -85,7 +85,7 @@ export default async function DriversPage({
           <h1 className="text-2xl font-semibold tracking-tight">Driver status</h1>
           <p className="text-sm text-slate-500">
             {branch ? `${branch} branch · ` : locked ? `${locked.join(" + ")} branches · ` : branches.length ? "All branches · " : ""}
-            {done} of {jobs.length} delivered · drag orders to arrange trips · click ⭐ to set points
+            {done} of {jobs.length} delivered
           </p>
           {mapsEnabled() && <div className="mt-2"><CalculatePointsButton ids={missingPoints} /></div>}
         </div>

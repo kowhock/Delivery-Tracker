@@ -8,6 +8,7 @@ import { commissionForDay, withTripPoints } from "@/lib/commission";
 import { lorryLabel, type Lorry, type Profile } from "@/lib/types";
 import { TripForm, type TripDay } from "@/components/TripForm";
 import { BranchDriverPicker } from "@/components/BranchDriverPicker";
+import { fromTripForm } from "@/app/actions";
 
 const MAX_DAYS = 31; // the monthly form has 31 rows
 
@@ -55,6 +56,7 @@ export default async function TripFormPage({
     // Time in = when the driver tapped Start (the last time, if started more than once).
     // A failed attempt keeps the start of that attempt.
     const started = await startedTimes(supabase, (rows ?? []).map((d) => d.id));
+    const typedIn = new Set(await fromTripForm((rows ?? []).map((d) => d.id)));
 
     // Lorries used (stamped on each DO when delivered); else the driver's lorry now.
     const lorryIds = [...new Set(delivered.map((d) => d.lorry_id).filter((x): x is string => !!x))];
@@ -89,6 +91,7 @@ export default async function TripFormPage({
           manual: d.points_manual && d.points != null,
           original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
           failed: d.failed ? d.failed_reason || "Failed" : "",
+          fromTripForm: !d.failed && typedIn.has(d.id),
         })),
       };
     });
@@ -101,9 +104,6 @@ export default async function TripFormPage({
       <div className="flex flex-wrap items-end justify-between gap-3 print:hidden">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Trip form</h1>
-          <p className="text-sm text-slate-500">
-            One day = daily trip form · a date range = monthly trip form. Points count DOs delivered on each day.
-          </p>
         </div>
         <form className="flex flex-wrap items-center gap-2">
           {locked ? (

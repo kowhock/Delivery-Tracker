@@ -68,7 +68,7 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
           <h1 className="text-2xl font-semibold tracking-tight">Lorries</h1>
           <p className="text-sm text-slate-500">
             {branch ? `${branchName(branch)} branch · ` : locked ? `${locked.map(branchName).join(" + ")} branches · ` : "All branches · "}
-            {lorries.length} {lorries.length === 1 ? "lorry" : "lorries"} · who drives which lorry, and maintenance
+            {lorries.length} {lorries.length === 1 ? "lorry" : "lorries"}
           </p>
         </div>
         {branches.length > 1 && (!locked || locked.length > 1) && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateRange, dayLabel, driverLabel, fmtMoney, fmtTime, isMobile, mapAddress, mapsLinks, normalizePhone, weekRange } from "./format";
+import { addDays, dateRange, dayLabel, driverLabel, fmtMoney, fmtTime, isMobile, mapAddress, mapsLinks, normalizePhone, parseTime, weekRange } from "./format";
 
 describe("normalizePhone", () => {
   it.each([
@@ -80,4 +80,19 @@ describe("addresses and labels", () => {
     expect(fmtMoney(1234.5)).toBe("RM 1,234.50");
     expect(fmtMoney(null)).toBe("—");
   });
+});
+
+describe("parseTime", () => {
+  it.each([
+    ["14:30", "14:30"],
+    ["1430", "14:30"],
+    ["2.30pm", "14:30"],
+    ["2:30 PM", "14:30"],
+    ["9am", "09:00"],
+    ["12am", "00:00"],
+    ["12:15pm", "12:15"],
+    [" 8:05 ", "08:05"],
+  ])("%s → %s", (raw, want) => expect(parseTime(raw)).toBe(want));
+
+  it.each(["", "25:00", "13pm", "9:75", "noon"])("rejects %j", (raw) => expect(parseTime(raw)).toBeNull());
 });

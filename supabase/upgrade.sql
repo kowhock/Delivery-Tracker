@@ -245,3 +245,33 @@ begin
   where id = sp.id;
 end $$;
 grant execute on function public.link_special_do(uuid, text) to authenticated;
+
+-- ---------- Delivery orders: AutoCount Doc Date ---------------------------
+-- The date on the DO (or M- invoice) in AutoCount, shown under the DO number.
+-- delivery_date starts as this but the office can move it; this one only follows AutoCount.
+-- Filled by the sync: run `npm run autocount:sync -- --days N` to fill older DOs.
+alter table public.delivery_orders add column if not exists doc_date date;
+
+-- ---------- Trip form: staff record a delivery at the time it happened -----
+-- A DO the driver didn't mark in the app is recorded from the trip form with its real
+-- "time back", so it counts on the right day. Drivers still always get the server's clock.
+create or replace function public.guard_delivery_order() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is not null and not public.is_staff() then  -- drivers (a server sync has no user)
+    new.points        := old.points;
+    new.points_manual := old.points_manual;
+    new.distance_km   := old.distance_km;
+    new.instructions  := old.instructions;
+    new.own_collection := old.own_collection;
+    new.lorry_id      := old.lorry_id;
+    new.map_address   := old.map_address;
+  end if;
+  if new.status = 'delivered' and old.status is distinct from 'delivered' then
+    if not public.is_staff() or new.delivered_at is null or new.delivered_at is not distinct from old.delivered_at then
+      new.delivered_at := now();
+    end if;
+    new.lorry_id := coalesce((select l.id from public.lorries l where l.driver_id = new.driver_id), new.lorry_id);
+  end if;
+  return new;
+end $$;

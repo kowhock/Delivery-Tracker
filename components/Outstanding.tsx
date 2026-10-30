@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrls } from "@/app/actions";
-import { fmtDateTime, fmtQty } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtQty } from "@/lib/format";
 import { EVENT_LABEL, TODO_LABEL, todoLabel, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent } from "@/lib/types";
 
 /** Green "Clear" button: marks an outstanding item as done. */
@@ -35,7 +35,8 @@ export function ClearButton({ id }: { id: string }) {
  * A DO number that opens the DO's items, with "Add remark" for flagging outstanding work.
  * `history`: also list who changed the DO and when (admins only).
  * `photo`: the DO has a proof-of-delivery photo to show.
- * `createdAt`: when the DO came into the system (AutoCount sync or keyed in), shown under the customer.
+ * `docDate`: the AutoCount Doc Date, shown under the customer.
+ * `createdAt`: when the DO came into the system; shown instead when there's no Doc Date (special DOs).
  */
 export function DoOutstanding({
   doId,
@@ -45,6 +46,7 @@ export function DoOutstanding({
   history = false,
   photo = false,
   createdAt,
+  docDate,
 }: {
   doId: string;
   doNo: string;
@@ -53,6 +55,7 @@ export function DoOutstanding({
   history?: boolean;
   photo?: boolean;
   createdAt?: string;
+  docDate?: string | null;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [isOpen, setOpen] = useState(false);
@@ -101,7 +104,11 @@ export function DoOutstanding({
               <div>
                 <h2 className="text-lg font-semibold tracking-tight">{doNo}</h2>
                 {customer && <p className="text-slate-600">{customer}</p>}
-                {createdAt && <p className="text-xs text-slate-400">Created {fmtDateTime(createdAt)}</p>}
+                {docDate ? (
+                  <p className="text-xs text-slate-400">Doc date {fmtDate(docDate)}</p>
+                ) : (
+                  createdAt && <p className="text-xs text-slate-400">Created {fmtDateTime(createdAt)}</p>
+                )}
               </div>
               <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
                 ×

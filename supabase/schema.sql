@@ -143,6 +143,7 @@ create table public.delivery_orders (
   map_address    text,                         -- typed by the office when Google can't find `address`; null = use address
   remarks        text,                         -- Remark 1 of the linked SO(s)
   delivery_date  date not null default current_date,
+  doc_date       date,                         -- AutoCount Doc Date (delivery_date starts as it, the office can move that)
   time_slot      text check (time_slot in ('0845-1100', '1100-1300', '1300-1500', '1500-1700', '1700-1900', '1900-2100')), -- optional estimated delivery window
   branch         text,                         -- delivering branch, from the DO number prefix (GPD → GP)
   sales_branch   text,                         -- agent's branch, from Sales Location; follows the DO too
@@ -298,7 +299,7 @@ $$;
 
 -- ---------- Driver points & commission -------------------------------
 -- Commission depends on points and delivery time, so drivers can't edit
--- those themselves; delivered_at is always the server's clock.
+-- those themselves; for drivers delivered_at is always the server's clock.
 create or replace function public.guard_delivery_order() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -312,7 +313,10 @@ begin
     new.map_address   := old.map_address;
   end if;
   if new.status = 'delivered' and old.status is distinct from 'delivered' then
-    new.delivered_at := now();
+    -- Staff recording a missed delivery (trip form) keep the time they typed.
+    if not public.is_staff() or new.delivered_at is null or new.delivered_at is not distinct from old.delivered_at then
+      new.delivered_at := now();
+    end if;
     new.lorry_id := coalesce((select l.id from public.lorries l where l.driver_id = new.driver_id), new.lorry_id);
   end if;
   return new;

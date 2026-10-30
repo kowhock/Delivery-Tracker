@@ -62,7 +62,6 @@ export default async function OrdersPage({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Sales orders</h1>
-          <p className="text-sm text-slate-500">Imported from AutoCount, with the DOs they were transferred to.</p>
         </div>
       </div>
 

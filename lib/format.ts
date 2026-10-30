@@ -120,3 +120,17 @@ export function dayLabel(d: string, today: string): string {
   if (d === addDays(today, 1)) return `Tomorrow · ${short}`;
   return `${t.toLocaleDateString("en-MY", { weekday: "short", timeZone: "UTC" })} · ${short}`;
 }
+
+/** A time typed on the trip form → "HH:MM" (24h), or null: "14:30", "1430", "2.30pm", "2:30 PM", "9am". */
+export function parseTime(raw: string): string | null {
+  const m = raw.trim().toUpperCase().match(/^(\d{1,2})(?:[:.]?(\d{2}))?\s*(AM|PM)?$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  if (m[3]) {
+    if (h < 1 || h > 12) return null;
+    h = (h % 12) + (m[3] === "PM" ? 12 : 0);
+  }
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}

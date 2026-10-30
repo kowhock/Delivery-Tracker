@@ -70,6 +70,7 @@ export type DeliveryOrder = {
   map_address: string | null; // typed by the office when Google can't find `address`
   remarks: string | null;
   delivery_date: string;
+  doc_date: string | null; // AutoCount Doc Date; null for special DOs
   time_slot: TimeSlot | null; // optional estimated delivery window
   branch: string | null; // delivering branch
   sales_branch: string | null; // agent's branch

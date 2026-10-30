@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import type { Workbook, Worksheet } from "exceljs";
+import { recordTripFormDo, undoTripFormDo } from "@/app/actions";
 
 // Printed at the top of the monthly trip form.
 const COMPANY_ZH = "高福五金建築材料 (馬) 有限公司";
@@ -16,7 +18,9 @@ export type TripDo = { id: string; doNo: string; location: string; timeIn: strin
   /** AutoCount address, set only when the office changed the delivery address used for points (`location` is the new one). */
   original: string;
   /** Why this attempt failed; set only on failed attempts (they still earn their points). */
-  failed?: string };
+  failed?: string;
+  /** Recorded on this form (Save), so it can be undone here. */
+  fromTripForm?: boolean };
 export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
 
 type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[] };
@@ -70,7 +74,7 @@ export function TripForm(props: Props) {
         <span className="mr-auto text-sm text-slate-600">
           <b>{daily ? "Daily" : "Monthly"} trip form</b> · {props.days.reduce((s, x) => s + x.points, 0)} pts ·{" "}
           {rm(props.days.reduce((s, x) => s + x.rm, 0))}
-          {daily ? " · blank boxes can be typed in before printing / exporting" : " · type OFF / MC etc. in Remarks before exporting"}
+          {daily ? " · type a missed DO into an empty box and press Save to add it" : " · type OFF / MC etc. in Remarks before exporting"}
         </span>
         <button type="button" onClick={() => window.print()} className="btn-secondary">
           PDF / Print
@@ -117,7 +121,7 @@ function Blank({ k, label, filled, setFilled, className = "" }: Filled & { k: st
   );
 }
 
-function DailyPage({ branch, driver, lorry, day, rows, page, filled, setFilled }: Props & Filled & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
+function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, setFilled }: Props & Filled & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
   return (
     // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
     <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
@@ -181,7 +185,7 @@ function DailyPage({ branch, driver, lorry, day, rows, page, filled, setFilled }
             {FIELDS.map((f, k) => (
               <tr key={f}>
                 {pair.map((x, side) => (
-                  <DoBoxRow key={side} field={f} row={k} x={x} at={(field) => boxKey(page, r, side, field)} filled={filled} setFilled={setFilled} />
+                  <DoBoxRow key={side} field={f} row={k} x={x} at={(field) => boxKey(page, r, side, field)} filled={filled} setFilled={setFilled} driverId={driverId} date={day.date} />
                 ))}
               </tr>
             ))}
@@ -196,7 +200,7 @@ const LABELS = { doNo: "DO NO.", location: "LOCATION", timeIn: "TIME IN", timeBa
 type Field = keyof typeof LABELS;
 const FIELDS = Object.keys(LABELS) as Field[];
 
-function DoBoxRow({ field, row, x, at, filled, setFilled }: Filled & { field: Field; row: number; x?: TripDo; at: (field: string) => string }) {
+function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date }: Filled & { field: Field; row: number; x?: TripDo; at: (field: string) => string; driverId: string; date: string }) {
   const value = x?.[field] ?? "";
   const blank = (f: string, className?: string) => <Blank k={at(f)} label={f === "points" ? "Points" : LABELS[field]} filled={filled} setFilled={setFilled} className={className} />;
   return (
@@ -229,6 +233,16 @@ function DoBoxRow({ field, row, x, at, filled, setFilled }: Filled & { field: Fi
       {row === 0 ? (
         x?.failed ? (
           <th className={`${head} text-center text-[10px] text-rose-600`} title={`Failed: ${x.failed}`}>FAILED</th>
+        ) : x?.fromTripForm ? (
+          <th className={`${head} p-0 text-center text-[10px]`}>
+            <UndoBox x={x} />
+            <span className="hidden print:inline">Remark</span>
+          </th>
+        ) : !x && filled[at("doNo")]?.trim() ? (
+          <th className={`${head} p-0 text-center text-[10px]`}>
+            <SaveBox at={at} filled={filled} setFilled={setFilled} driverId={driverId} date={date} />
+            <span className="hidden print:inline">Remark</span>
+          </th>
         ) : (
           <th className={`${head} text-center text-[10px]`}>Remark</th>
         )
@@ -238,11 +252,76 @@ function DoBoxRow({ field, row, x, at, filled, setFilled }: Filled & { field: Fi
           className={`${cell} text-center text-xl font-semibold ${x?.manual ? "bg-blue-100 print:bg-blue-100" : ""}`}
           title={x?.manual ? "Points keyed in by staff" : undefined}
         >
-          {/* A real DO's points come from Driver status (typed ones wouldn't reach the totals); empty boxes are free. */}
+          {/* A real DO's points come from Driver status; typed ones reach the totals once the box is saved. */}
           {x ? x.points ?? "" : blank("points", "text-center")}
         </td>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Saves a typed-in DO box to that DO (one already in the system): delivered by this driver on
+ * this day, with the typed times and points, so it joins the totals. The box then fills from the DO.
+ */
+function SaveBox({ at, filled, setFilled, driverId, date }: Filled & { at: (field: string) => string; driverId: string; date: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const keys = ["doNo", "location", "timeIn", "timeBack", "points"].map(at);
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title="Save this DO to the driver's trip: marks it delivered on this day, with these times and points"
+      className="h-full w-full bg-brand-600 py-1 font-bold text-white hover:bg-brand-700 disabled:opacity-60 print:hidden"
+      onClick={() =>
+        start(async () => {
+          try {
+            await recordTripFormDo({
+              driverId,
+              date,
+              doNo: filled[at("doNo")] ?? "",
+              timeIn: filled[at("timeIn")] ?? "",
+              timeBack: filled[at("timeBack")] ?? "",
+              points: filled[at("points")] ?? "",
+            });
+            setFilled((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !keys.includes(k))));
+            router.refresh();
+          } catch (e) {
+            alert(e instanceof Error ? e.message : "Could not save");
+          }
+        })
+      }
+    >
+      {pending ? "…" : "SAVE"}
+    </button>
+  );
+}
+
+/** Undoes a box saved from this form: the DO goes back to Unassigned. */
+function UndoBox({ x }: { x: TripDo }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title="Typed in on the trip form · undo: back to Unassigned, not delivered"
+      className="h-full w-full bg-slate-200 py-1 font-bold text-slate-700 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-60 print:hidden"
+      onClick={() => {
+        if (!confirm(`Undo ${x.doNo}? It goes back to Unassigned and comes off this trip form.`)) return;
+        start(async () => {
+          try {
+            await undoTripFormDo(x.id);
+            router.refresh();
+          } catch (e) {
+            alert(e instanceof Error ? e.message : "Could not undo");
+          }
+        });
+      }}
+    >
+      {pending ? "…" : "UNDO"}
+    </button>
   );
 }
 

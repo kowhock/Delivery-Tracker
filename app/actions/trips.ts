@@ -5,7 +5,8 @@ import { requireStaff } from "@/lib/auth";
 import { bestRoute } from "@/lib/geo";
 import { branchName, canPlan, storeAddress } from "@/lib/branches";
 import type { DoStatus } from "@/lib/types";
-import { notYourBranch } from "./_shared";
+import { parseTime } from "@/lib/format";
+import { nextTrip, notYourBranch } from "./_shared";
 
 // ---------- Trip planning (Driver status page) -----------------------
 
@@ -148,4 +149,106 @@ export async function optimiseTrip(lane: { driverId: string; date: string; tripN
     store: branch,
     notFound: route.notFound.map((id) => doNo.get(id)!),
   };
+}
+
+// ---------- Trip form: deliveries the driver didn't mark in the app ----
+
+/**
+ * A DO typed into an empty box on the daily trip form. It must already be in the system: it
+ * becomes delivered by this driver on that day at "time back", in their last trip of the day,
+ * with the typed points (keyed in), so it counts in the daily and monthly totals.
+ * Saving again (same driver) corrects the times or points.
+ */
+export async function recordTripFormDo(input: { driverId: string; date: string; doNo: string; timeIn: string; timeBack: string; points: string }) {
+  const { supabase, profile } = await requireStaff();
+  const doNo = input.doNo.trim().toUpperCase();
+  if (!doNo) throw new Error("Type the DO number.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error("Invalid date");
+  const timeBack = parseTime(input.timeBack);
+  if (!timeBack) throw new Error("Type the time back, e.g. 14:30 or 2.30pm.");
+  const timeIn = input.timeIn.trim() ? parseTime(input.timeIn) : null;
+  if (input.timeIn.trim() && !timeIn) throw new Error("Time in should look like 10:15 or 10.15am.");
+  if (timeIn && timeIn > timeBack) throw new Error("Time in is after time back.");
+  const points = input.points.trim() === "" ? null : Number(input.points);
+  if (points != null && (!Number.isInteger(points) || points < 0 || points > 99)) throw new Error("Points must be a whole number from 0 to 99.");
+
+  const { data: driver } = await supabase.from("profiles").select("full_name, role").eq("id", input.driverId).single();
+  if (!driver || driver.role !== "driver") throw new Error("Driver not found");
+
+  const { data: d } = await supabase
+    .from("delivery_orders")
+    .select("id, so_id, status, driver_id, delivery_date, branch, cancelled")
+    .eq("do_no", doNo)
+    .maybeSingle();
+  if (!d) throw new Error(`${doNo} isn't in the system — check the DO number.`);
+  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (d.cancelled) throw new Error(`${doNo} is cancelled in AutoCount.`);
+  if (d.status === "delivered" && d.driver_id !== input.driverId) throw new Error(`${doNo} was already delivered by another driver.`);
+
+  const at = (t: string) => `${input.date}T${t}:00+08:00`;
+  const newLane = d.driver_id !== input.driverId || d.delivery_date !== input.date;
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({
+      driver_id: input.driverId,
+      delivery_date: input.date,
+      status: "delivered",
+      failed_reason: null,
+      delivered_at: at(timeBack), // kept for staff by guard_delivery_order (drivers always get the server's clock)
+      ...(newLane ? { trip_no: Math.max(1, (await nextTrip(supabase, input.driverId, input.date, d.id)) - 1), trip_seq: 99 } : {}),
+      ...(points != null ? { points, points_manual: true } : {}),
+    })
+    .eq("id", d.id);
+  if (error) throw new Error(error.message);
+
+  // Time in is read from the latest "out_for_delivery" event.
+  if (timeIn) await supabase.from("status_events").insert({ so_id: d.so_id, do_id: d.id, status: "out_for_delivery", note: "Time in from trip form", created_at: at(timeIn) });
+  await supabase.from("status_events").insert({
+    so_id: d.so_id,
+    do_id: d.id,
+    status: "delivered",
+    note: `${TRIP_FORM_NOTE} by ${profile.full_name}: ${driver.full_name}, ${input.date} ${timeBack}${points != null ? `, ${points} pts` : ""}`,
+  });
+
+  revalidatePath("/trip-form");
+  revalidatePath("/drivers");
+  revalidatePath("/deliveries");
+  revalidatePath("/driver");
+  revalidatePath("/orders/[id]", "page");
+}
+
+/** The note recordTripFormDo leaves on the DO; marks deliveries that can be undone from the trip form. */
+const TRIP_FORM_NOTE = "Recorded from trip form";
+
+/** DOs whose delivery was recorded on the trip form (their latest "delivered" event says so). */
+export async function fromTripForm(doIds: string[]): Promise<string[]> {
+  const { supabase } = await requireStaff();
+  const latest = new Map<string, { at: string; note: string }>();
+  for (let i = 0; i < doIds.length; i += 200) {
+    const { data } = await supabase.from("status_events").select("do_id, created_at, note").in("do_id", doIds.slice(i, i + 200)).eq("status", "delivered");
+    for (const e of data ?? []) if (e.created_at > (latest.get(e.do_id)?.at ?? "")) latest.set(e.do_id, { at: e.created_at, note: e.note ?? "" });
+  }
+  return [...latest].filter(([, e]) => e.note.startsWith(TRIP_FORM_NOTE)).map(([id]) => id);
+}
+
+/** Undoes a trip form save: the DO goes back to Unassigned (no driver, not delivered). */
+export async function undoTripFormDo(doId: string) {
+  const { supabase, profile } = await requireStaff();
+  const { data: d } = await supabase.from("delivery_orders").select("so_id, do_no, status, branch").eq("id", doId).single();
+  if (!d) throw new Error("DO not found.");
+  if (!canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
+  if (d.status !== "delivered" || !(await fromTripForm([doId])).length) throw new Error(`${d.do_no} wasn't recorded from the trip form, so it can't be undone here.`);
+
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({ status: "pending", driver_id: null, delivered_at: null, trip_no: 1, trip_seq: 0 })
+    .eq("id", doId);
+  if (error) throw new Error(error.message);
+  await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: "pending", note: `Trip form entry undone by ${profile.full_name} (back to Unassigned)` });
+
+  revalidatePath("/trip-form");
+  revalidatePath("/drivers");
+  revalidatePath("/deliveries");
+  revalidatePath("/driver");
+  revalidatePath("/orders/[id]", "page");
 }

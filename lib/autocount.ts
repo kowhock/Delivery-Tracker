@@ -134,6 +134,7 @@ export async function importAcDeliveryOrders(supabase: SupabaseClient, input: Ac
     address: r.delivery_address,
     branch: branchFromDoNo(r.doc_no),
     sales_branch: branchFromLocation(r.sales_location),
+    doc_date: r.date,
     ref: r.ref,
     total: r.total,
     invoice_no: r.transfer_to,

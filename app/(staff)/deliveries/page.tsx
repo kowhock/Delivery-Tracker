@@ -288,7 +288,7 @@ export default async function DeliveriesPage({
                       <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
-                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path} />
+                            <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path} />
                           </span>
                           <span className="flex items-center gap-2">
                             {j.source === "special" && !j.special_no && (j.created_by === user.id || profile.role === "admin") && PLANNABLE.includes(j.status) && (

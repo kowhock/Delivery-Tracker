@@ -64,7 +64,6 @@ export default async function OutstandingPage({
           {branch ? `${branch} branch · ` : locked ? `${locked.join(" + ")} branches · ` : "All branches · "}
           {from || to ? `Added ${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}` : "All dates"} · {openCount} not cleared
         </p>
-        <p className="mt-1 text-xs text-slate-400">Tap a DO number on Deliveries to add one.</p>
       </div>
 
       <div className="card flex flex-wrap items-center gap-x-2.5 gap-y-2 p-2">
