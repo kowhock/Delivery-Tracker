@@ -150,6 +150,7 @@ create table public.delivery_orders (
   ref            text,                         -- AutoCount Ref. (customer PO etc.)
   total          numeric(14, 2),
   invoice_no     text,                         -- AutoCount Transfer To (invoice)
+  special_no     text,                         -- the SDO-… number it had before it was linked to its AutoCount DO
   created_user   text,                         -- AutoCount Created User
   cancelled      boolean not null default false,
   source         text not null default 'manual', -- autocount | special (keyed in by the office)
@@ -243,6 +244,32 @@ create table public.do_outstanding (
 create index do_outstanding_do_id_idx on public.do_outstanding (do_id);
 create index do_outstanding_open_idx on public.do_outstanding (created_at) where cleared_at is null;
 
+-- ---------- Failed delivery attempts ---------------------------------
+-- Every time a DO turns Failed, the attempt is kept here (driver, lorry, day, trip,
+-- when they set off, why it failed). Commission and the trip form count these like
+-- delivered DOs (the DO's own points), so a DO that fails and is redelivered earns twice.
+create table public.delivery_attempts (
+  id            uuid primary key default gen_random_uuid(),
+  do_id         uuid not null references public.delivery_orders on delete cascade,
+  driver_id     uuid references public.profiles on delete set null,
+  lorry_id      uuid references public.lorries on delete set null,
+  delivery_date date not null,
+  trip_no       int not null default 1,
+  started_at    timestamptz,                   -- when the driver tapped Start for this attempt
+  failed_at     timestamptz not null default now(),
+  failed_reason text
+);
+create index delivery_attempts_driver_idx on public.delivery_attempts (driver_id, failed_at);
+create index delivery_attempts_do_idx on public.delivery_attempts (do_id);
+
+-- ---------- AutoCount sync: when it last ran ---------------------------
+-- The office computer's sync writes here after each run, so the Deliveries page
+-- can show "AutoCount synced 2 min ago".
+create table public.sync_status (
+  source     text primary key,                 -- 'autocount'
+  synced_at  timestamptz not null              -- last run that worked finished at
+);
+
 -- ---------- How much of each SO line is already on a DO --------------
 create view public.so_item_progress with (security_invoker = true) as
 select
@@ -297,20 +324,74 @@ language sql security invoker set search_path = '' as $$
   where s.id = st.id and s.status <> st.status;
 $$;
 
+-- ---------- Special DO → its AutoCount DO -----------------------------------
+-- When AutoCount is down the office keys in a special DO (SDO-…). Once AutoCount is back
+-- and has the real DO, the special DO takes the AutoCount number, so every sync from then
+-- on updates it (driver, status, photos, points and history stay); special_no keeps the SDO-… it had.
+-- If the sync already brought the AutoCount DO in as its own card, that card (not started yet)
+-- is folded in: its items, SO links, history and notes move over, then it's removed.
+-- All in one go: if anything fails nothing changes. Runs as the caller (staff only, by RLS).
+create or replace function public.link_special_do(p_special uuid, p_do_no text) returns void
+language plpgsql set search_path = '' as $$
+declare
+  sp  public.delivery_orders;
+  dup public.delivery_orders;
+begin
+  select * into sp from public.delivery_orders where id = p_special for update;
+  if sp.id is null or sp.source <> 'special' then raise exception 'Special DO not found.'; end if;
+
+  select * into dup from public.delivery_orders where upper(do_no) = upper(p_do_no) and id <> p_special for update;
+  if dup.id is not null then
+    if dup.status not in ('pending', 'assigned') then
+      raise exception '% is already out for delivery or delivered — it can''t be merged into %.', dup.do_no, sp.do_no;
+    end if;
+    -- AutoCount's items and SO links win; history, notes and any failed tries are kept from both.
+    delete from public.do_items where do_id = sp.id;
+    update public.do_items set do_id = sp.id where do_id = dup.id;
+    delete from public.do_sales_orders where do_id = sp.id;
+    update public.do_sales_orders set do_id = sp.id where do_id = dup.id;
+    update public.status_events set do_id = sp.id where do_id = dup.id;
+    update public.do_outstanding set do_id = sp.id where do_id = dup.id;
+    update public.delivery_attempts set do_id = sp.id where do_id = dup.id;
+    delete from public.delivery_orders where id = dup.id;
+    update public.delivery_orders set
+      so_id = dup.so_id, so_no = dup.so_no, customer_name = dup.customer_name, address = dup.address,
+      contact_phone = coalesce(sp.contact_phone, dup.contact_phone), remarks = dup.remarks,
+      branch = dup.branch, sales_branch = dup.sales_branch, ref = dup.ref, total = dup.total,
+      invoice_no = dup.invoice_no, created_user = dup.created_user, cancelled = dup.cancelled
+    where id = sp.id;
+  end if;
+
+  update public.delivery_orders
+  set do_no = upper(trim(p_do_no)), special_no = sp.do_no, source = case when dup.id is null then source else 'autocount' end
+  where id = sp.id;
+end $$;
+grant execute on function public.link_special_do(uuid, text) to authenticated;
+
 -- ---------- Driver points & commission -------------------------------
--- Commission depends on points and delivery time, so drivers can't edit
--- those themselves; for drivers delivered_at is always the server's clock.
+-- Commission depends on points and delivery time, so drivers can't edit those (or anything
+-- else the driver app doesn't change); for drivers delivered_at is always the server's clock.
 create or replace function public.guard_delivery_order() returns trigger
 language plpgsql security definer set search_path = '' as $$
+declare
+  kept public.delivery_orders;
 begin
   if auth.uid() is not null and not public.is_staff() then  -- drivers (a server sync has no user)
-    new.points        := old.points;
-    new.points_manual := old.points_manual;
-    new.distance_km   := old.distance_km;
-    new.instructions  := old.instructions;
-    new.own_collection := old.own_collection;
-    new.lorry_id      := old.lorry_id;
-    new.map_address   := old.map_address;
+    -- Drivers change only what the driver app changes: Start, Delivered (photo), Failed (reason),
+    -- and the WhatsApp result. Everything else (date, address, points, cancelled, columns added
+    -- later…) stays as it was. Once Delivered, only the WhatsApp result can change.
+    kept := old;
+    kept.wa_sent_at := new.wa_sent_at;
+    kept.wa_error   := new.wa_error;
+    if old.status <> 'delivered' then
+      if new.status is distinct from old.status and new.status not in ('out_for_delivery', 'delivered', 'failed') then
+        raise exception 'Drivers can only start, deliver or fail a delivery.';
+      end if;
+      kept.status         := new.status;
+      kept.failed_reason  := new.failed_reason;
+      kept.pod_photo_path := new.pod_photo_path;
+    end if;
+    new := kept;
   end if;
   if new.status = 'delivered' and old.status is distinct from 'delivered' then
     -- Staff recording a missed delivery (trip form) keep the time they typed.
@@ -326,6 +407,27 @@ create trigger guard_delivery_order
   before update on public.delivery_orders
   for each row execute function public.guard_delivery_order();
 
+-- Keeps every failed attempt (see delivery_attempts).
+create or replace function public.record_failed_attempt() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.status = 'failed' and old.status is distinct from 'failed' then
+    insert into public.delivery_attempts (do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_reason)
+    values (
+      new.id, new.driver_id,
+      coalesce((select l.id from public.lorries l where l.driver_id = new.driver_id), new.lorry_id),
+      new.delivery_date, new.trip_no,
+      (select max(e.created_at) from public.status_events e where e.do_id = new.id and e.status = 'out_for_delivery'),
+      new.failed_reason
+    );
+  end if;
+  return null;
+end $$;
+
+create trigger record_failed_attempt
+  after update of status on public.delivery_orders
+  for each row execute function public.record_failed_attempt();
+
 
 -- ---------- Row Level Security ---------------------------------------
 alter table public.profiles        enable row level security;
@@ -338,6 +440,8 @@ alter table public.status_events   enable row level security;
 alter table public.do_outstanding  enable row level security;
 alter table public.lorries         enable row level security;
 alter table public.lorry_events    enable row level security;
+alter table public.delivery_attempts enable row level security;
+alter table public.sync_status     enable row level security;
 
 -- Profiles: see yourself; staff see everyone; admins edit roles.
 create policy "read own or staff"   on public.profiles for select using (id = (select auth.uid()) or (select public.is_staff()));
@@ -354,6 +458,8 @@ create policy "staff all" on public.status_events   for all using ((select publi
 create policy "staff all" on public.do_outstanding  for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.lorries         for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.lorry_events    for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "staff all" on public.delivery_attempts for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "staff all" on public.sync_status     for all using ((select public.is_staff())) with check ((select public.is_staff()));
 
 -- Drivers: only their own delivery jobs.
 create policy "driver reads own DOs" on public.delivery_orders
@@ -369,12 +475,21 @@ create policy "driver logs own events" on public.status_events
 create policy "driver reads own events" on public.status_events
   for select using (actor_id = (select auth.uid()));
 
+create policy "driver reads own attempts" on public.delivery_attempts
+  for select using (driver_id = (select auth.uid()));
+-- A driver keeps seeing the points of a DO they failed, even after it's given to another driver.
+create policy "driver reads attempted DOs" on public.delivery_orders
+  for select using (exists (
+    select 1 from public.delivery_attempts a where a.do_id = delivery_orders.id and a.driver_id = (select auth.uid())));
+
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
+grant execute on function public.link_special_do(uuid, text) to authenticated;
 
 -- ---------- Live updates for the dispatch board ----------------------
 alter publication supabase_realtime add table public.delivery_orders;
+alter publication supabase_realtime add table public.sync_status;  -- "synced 2 min ago"
 
 -- ---------- Proof-of-delivery photo storage --------------------------
 insert into storage.buckets (id, name, public) values ('pod', 'pod', false)
