@@ -33,7 +33,7 @@ const DELIVERY_FILTERS = {
 type DeliveryFilter = keyof typeof DELIVERY_FILTERS;
 
 // "Also show": DOs our drivers don't deliver, hidden unless picked.
-const EXTRAS = { "": "Deliveries", oc: "+ O/C", supplier: "+ Supplier", both: "+ O/C, Supplier" };
+const EXTRAS = { "": "Deliveries", oc: "+ O/C", supplier: "+ Supplier" };
 type Extra = keyof typeof EXTRAS;
 
 const PAGE = 300; // DOs loaded at a time
@@ -74,8 +74,8 @@ export default async function DeliveriesPage({
   // O/C (customer collects) and Supplier delivery are hidden unless staff pick them under "Also show".
   // (?oc=show is the old link for O/C.)
   const extra: Extra = sp.extra && sp.extra in EXTRAS ? (sp.extra as Extra) : sp.oc === "show" ? "oc" : "";
-  const showOc = extra === "oc" || extra === "both";
-  const showSupplier = extra === "supplier" || extra === "both";
+  const showOc = extra === "oc";
+  const showSupplier = extra === "supplier";
   // Cross-branch: DOs this branch sold that another branch is delivering.
   const crossOnly = sp.xb === "1";
   const q = (sp.q ?? "").trim();
