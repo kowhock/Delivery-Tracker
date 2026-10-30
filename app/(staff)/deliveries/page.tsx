@@ -13,7 +13,7 @@ import { DoOutstanding } from "@/components/Outstanding";
 import { OcCollect } from "@/components/OcCollect";
 import { Redeliver } from "@/components/Redeliver";
 import { LinkSpecialDo } from "@/components/LinkSpecialDo";
-import { NavForm, NavLink, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
+import { NavForm, NavLink, NavSelect, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
   pending: "bg-slate-400",
@@ -31,6 +31,10 @@ const DELIVERY_FILTERS = {
   failed: { label: "Failed", statuses: ["failed"] as DoStatus[] },
 };
 type DeliveryFilter = keyof typeof DELIVERY_FILTERS;
+
+// "Also show": DOs our drivers don't deliver, hidden unless picked.
+const EXTRAS = { "": "Deliveries", oc: "+ O/C", supplier: "+ Supplier", both: "+ O/C, Supplier" };
+type Extra = keyof typeof EXTRAS;
 
 const PAGE = 300; // DOs loaded at a time
 const MAX_LOADED = 3000;
@@ -56,7 +60,7 @@ function href(params: Record<string, string | undefined>) {
 export default async function DeliveriesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; show?: string; q?: string; oc?: string; branch?: string; xb?: string; n?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; show?: string; q?: string; oc?: string; extra?: string; branch?: string; xb?: string; n?: string }>;
 }) {
   const sp = await searchParams;
   const today = todayMY();
@@ -67,8 +71,11 @@ export default async function DeliveriesPage({
   const to = picked ? (sp.to && (!from || sp.to >= from) ? sp.to : "") : today;
   const show: DeliveryFilter = sp.show && sp.show in DELIVERY_FILTERS ? (sp.show as DeliveryFilter) : "";
   const statuses = DELIVERY_FILTERS[show].statuses;
-  // O/C (customer collects at the store) is hidden unless staff turn it on.
-  const showOc = sp.oc === "show";
+  // O/C (customer collects) and Supplier delivery are hidden unless staff pick them under "Also show".
+  // (?oc=show is the old link for O/C.)
+  const extra: Extra = sp.extra && sp.extra in EXTRAS ? (sp.extra as Extra) : sp.oc === "show" ? "oc" : "";
+  const showOc = extra === "oc" || extra === "both";
+  const showSupplier = extra === "supplier" || extra === "both";
   // Cross-branch: DOs this branch sold that another branch is delivering.
   const crossOnly = sp.xb === "1";
   const q = (sp.q ?? "").trim();
@@ -87,6 +94,7 @@ export default async function DeliveriesPage({
   const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses): Q => {
     query = query.eq("cancelled", false).in("status", st);
     if (!showOc) query = query.eq("is_oc", false);
+    if (!showSupplier) query = query.eq("supplier_delivery", false);
     if (locked) query = query.or(deliveredOrSoldBy(locked));
     if (term) query = query.ilike("do_no", `%${term}%`);
     else {
@@ -131,12 +139,13 @@ export default async function DeliveriesPage({
   // The delivering branch's drivers — only the other branch's once a DO is assigned to it; everyone when that branch has none set up.
   const driversFor = (j: Pick<DeliveryOrder, "branch" | "helper_branch">) => driversForBranch(drivers, j.helper_branch ?? j.branch);
 
-  // O/C DOs get a column of their own (not Unassigned); still to collect first, collected ones below.
+  // O/C and Supplier delivery DOs get columns of their own (not Unassigned); O/C still to collect first, collected ones below.
   const columns = [
-    ...statuses.map((s) => ({ key: s, label: DO_STATUS_LABEL[s], dot: COLUMN_DOT[s], jobs: jobs.filter((j) => !j.is_oc && j.status === s) })),
+    ...statuses.map((s) => ({ key: s, label: DO_STATUS_LABEL[s], dot: COLUMN_DOT[s], jobs: jobs.filter((j) => !j.is_oc && !j.supplier_delivery && j.status === s) })),
     ...(showOc
       ? [{ key: "oc", label: "O/C", dot: "bg-violet-500", jobs: jobs.filter((j) => j.is_oc).sort((a, b) => Number(a.status === "delivered") - Number(b.status === "delivered")) }]
       : []),
+    ...(showSupplier ? [{ key: "supplier", label: "Supplier delivery", dot: "bg-teal-500", jobs: jobs.filter((j) => j.supplier_delivery) }] : []),
   ];
 
   const isToday = from === today && to === today;
@@ -146,7 +155,7 @@ export default async function DeliveriesPage({
   // Filters that stay on while staff change other ones.
   const keep = {
     show: show || undefined,
-    oc: showOc ? "show" : undefined,
+    extra: extra || undefined,
     xb: crossOnly ? "1" : undefined,
     branch: sp.branch,
   };
@@ -204,13 +213,27 @@ export default async function DeliveriesPage({
           ))}
         </nav>
 
-        <NavLink
-          href={href({ ...keep, oc: showOc ? undefined : "show", ...dateParams, q: q || undefined })}
-          aria-pressed={showOc}
-          className={`${TAB} border ${showOc ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-500 hover:text-slate-900"}`}
-        >
-          {showOc ? "Showing O/C" : "Show O/C"}
-        </NavLink>
+        {/* Also show O/C / Supplier: looks like the tab groups beside it; dark once something extra is on. */}
+        <span className="flex rounded-lg bg-slate-100 p-0.5">
+          <span className="relative">
+            <NavSelect
+              aria-label="Also show"
+              title="Also show O/C and Supplier delivery DOs"
+              value={extra}
+              options={(Object.keys(EXTRAS) as Extra[]).map((value) => ({
+                value,
+                label: EXTRAS[value],
+                href: href({ ...keep, extra: value || undefined, ...dateParams, q: q || undefined }),
+              }))}
+              className={`cursor-pointer appearance-none rounded-md py-1 pl-2 pr-6 text-xs font-medium shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-brand-600 ${
+                extra ? "bg-slate-900 text-white" : "bg-white text-slate-900 hover:bg-slate-50"
+              }`}
+            />
+            <svg aria-hidden viewBox="0 0 20 20" fill="currentColor" className={`pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 ${extra ? "text-white" : "text-slate-400"}`}>
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
+            </svg>
+          </span>
+        </span>
 
         {branch && (
           <NavLink
@@ -340,7 +363,13 @@ export default async function DeliveriesPage({
                             ⚠ <span className="font-medium">{todoLabel(o)}</span> · {o.reason}
                           </p>
                         ))}
-                        {j.is_oc && mine ? (
+                        {j.supplier_delivery ? (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-medium text-teal-700">Supplier delivery</p>
+                            {/* Picking a driver (or "Choose driver…") makes it our delivery again. */}
+                            {mine && <AssignDriver key="supplier" doId={j.id} driverId={null} isSupplier drivers={driversFor(j)} />}
+                          </div>
+                        ) : j.is_oc && mine ? (
                           <div className="space-y-1.5">
                             <OcCollect key={`${j.status}-${j.delivered_at}`} doId={j.id} collectedAt={j.status === "delivered" ? (j.delivered_at ?? j.created_at) : null} />
                             {/* No delivery date for O/C; picking a driver makes it a delivery, and its card then has the date. */}

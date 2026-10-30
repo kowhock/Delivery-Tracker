@@ -35,8 +35,8 @@ export const BRANCHES = [
     code: "SL", name: "Seelong", doPrefix: "SND", icbPrefix: "M-SN", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
     store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
   },
-  // Delivered by the supplier; kept so the selling branch can still follow it.
-  { code: "NB2", name: "NB2 (supplier delivery)", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null },
+  // NB2: a branch of its own, with no store set (so no delivery distance).
+  { code: "NB2", name: "NB2", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null },
 ] as const;
 
 const prefixOf = (docNo: string) => docNo.trim().toUpperCase().split("-")[0];

@@ -93,6 +93,7 @@ export type DeliveryOrder = {
   geo_lng: number | null;
   own_collection: boolean | null; // office's O/C pick; null = auto from remarks/address
   is_oc: boolean; // O/C = customer collects at the store (no delivery)
+  supplier_delivery: boolean; // the supplier delivers it: no driver, delivered when picked
   driver_id: string | null;
   lorry_id: string | null; // lorry it was delivered with (set when delivered)
   trip_no: number;

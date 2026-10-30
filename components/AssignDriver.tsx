@@ -4,17 +4,19 @@ import { useTransition } from "react";
 import { assignDriver } from "@/app/actions";
 import { driverLabel } from "@/lib/format";
 
-/** Pick a driver, or "O/C" when the customer collects at the store. */
+/** Pick a driver, "O/C" when the customer collects at the store, or "Supplier delivery" when the supplier delivers it. */
 export function AssignDriver({
   doId,
   driverId,
   isOc = false,
+  isSupplier = false,
   drivers,
   driverName = "Current driver",
 }: {
   doId: string;
   driverId: string | null;
   isOc?: boolean;
+  isSupplier?: boolean;
   driverName?: string;
   drivers: { id: string; full_name: string; lorry_no: string | null }[];
 }) {
@@ -25,7 +27,7 @@ export function AssignDriver({
   return (
     <select
       disabled={pending}
-      defaultValue={isOc ? "oc" : (driverId ?? "")}
+      defaultValue={isSupplier ? "supplier" : isOc ? "oc" : (driverId ?? "")}
       onChange={(e) => {
         const fd = new FormData();
         fd.set("do_id", doId);
@@ -40,6 +42,7 @@ export function AssignDriver({
         <option key={d.id} value={d.id}>{driverLabel(d)}</option>
       ))}
       <option value="oc">O/C (customer collects)</option>
+      <option value="supplier">Supplier delivery</option>
     </select>
   );
 }

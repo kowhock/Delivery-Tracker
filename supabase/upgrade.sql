@@ -17,3 +17,7 @@ alter table public.profiles add column if not exists real_name text;
 -- dispatchers see it and can pick its driver; the DO's own branch keeps seeing and planning it.
 -- Points stay measured from the DO's own store. The AutoCount sync never touches this column.
 alter table public.delivery_orders add column if not exists helper_branch text;
+
+-- 2026-10-30: Supplier delivery — the supplier delivers the DO, so it has no driver (no points)
+-- and is delivered as soon as staff pick it. It has its own column on Deliveries, not Unassigned.
+alter table public.delivery_orders add column if not exists supplier_delivery boolean not null default false;

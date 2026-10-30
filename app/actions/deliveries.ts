@@ -202,21 +202,29 @@ export async function calculateMissingPoints(doIds: string[]) {
 export async function assignDriver(formData: FormData) {
   const { supabase, profile } = await requireStaff();
   const doId = String(formData.get("do_id"));
-  // "oc" = O/C: the customer collects, so no driver. Any other pick makes it a delivery.
-  const oc = formData.get("driver_id") === "oc";
-  const driverId = oc ? null : String(formData.get("driver_id") || "") || null;
+  // "oc" = O/C: the customer collects, so no driver. "supplier" = the supplier delivers it: no driver,
+  // and it's delivered straight away. Any other pick makes it a delivery by our drivers.
+  const pick = String(formData.get("driver_id") || "");
+  const oc = pick === "oc";
+  const supplier = pick === "supplier";
+  const driverId = oc || supplier ? null : pick || null;
   const date = String(formData.get("delivery_date") || "") || undefined;
 
   const { data: current } = await supabase
     .from("delivery_orders")
-    .select("so_id, status, branch, helper_branch, driver_id, delivery_date")
+    .select("so_id, status, branch, helper_branch, driver_id, delivery_date, supplier_delivery")
     .eq("id", doId)
     .single();
   if (!current) return;
   if (!canPlan(profile.branch, current.branch, current.helper_branch)) throw new Error(notYourBranch(current.branch));
+  const plannable = ["pending", "assigned", "failed"].includes(current.status);
+  if (!plannable && !current.supplier_delivery) throw new Error("This DO is already on the road or delivered.");
+  if (supplier && current.supplier_delivery) return;
 
+  // A supplier delivery is planned again like any DO once staff pick a driver (or none) instead.
   let status: DoStatus = current.status;
-  if (["pending", "assigned", "failed"].includes(current.status)) status = driverId ? "assigned" : "pending";
+  if (supplier) status = "delivered";
+  else if (plannable || current.supplier_delivery) status = driverId ? "assigned" : "pending";
 
   // New driver or day → a trip of its own after the driver's last one; same driver and day keeps its trip.
   const day = date ?? current.delivery_date;
@@ -229,6 +237,9 @@ export async function assignDriver(formData: FormData) {
       status,
       failed_reason: null,
       own_collection: oc,
+      supplier_delivery: supplier,
+      // Delivered now (set by the database); undoing a supplier delivery clears it.
+      ...(current.supplier_delivery && !supplier ? { delivered_at: null } : {}),
       ...(date ? { delivery_date: date } : {}),
       ...(tripNo ? { trip_no: tripNo, trip_seq: 0 } : {}),
     })
@@ -243,7 +254,7 @@ export async function assignDriver(formData: FormData) {
     so_id: current.so_id,
     do_id: doId,
     status,
-    note: oc ? "Marked O/C (customer collects)" : driverId ? `Assigned to ${driverName}${tripNo ? ` · Trip ${tripNo}` : ""}` : "Unassigned",
+    note: supplier ? "Supplier delivery (delivered by the supplier)" : oc ? "Marked O/C (customer collects)" : driverId ? `Assigned to ${driverName}${tripNo ? ` · Trip ${tripNo}` : ""}` : "Unassigned",
   });
 
   revalidatePath("/deliveries");

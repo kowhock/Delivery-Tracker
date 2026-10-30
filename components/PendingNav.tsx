@@ -68,3 +68,15 @@ export function PendingDim({ children }: { children: React.ReactNode }) {
   const { pending } = useContext(Ctx);
   return <div className={`transition-opacity ${pending ? "pointer-events-none opacity-50" : ""}`}>{children}</div>;
 }
+
+/** A dropdown of filter choices; picking one navigates in place to its link. */
+export function NavSelect({ options, value, className, ...props }: { options: { value: string; label: string; href: string }[]; value: string; className?: string; "aria-label"?: string; title?: string }) {
+  const { go } = useContext(Ctx);
+  return (
+    <select {...props} value={value} onChange={(e) => go(options.find((o) => o.value === e.target.value)!.href)} className={className}>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+}

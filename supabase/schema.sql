@@ -169,6 +169,7 @@ create table public.delivery_orders (
   is_oc          boolean generated always as (coalesce(own_collection,
                    coalesce(remarks, '') ~* '(^|[^a-z0-9])(o\s*/\s*c([^a-z0-9]|$)|own\s*collect)'
                    or coalesce(address, '') ~* '(^|[^a-z0-9])(o\s*/\s*c([^a-z0-9]|$)|own\s*collect)')) stored,
+  supplier_delivery boolean not null default false, -- the supplier delivers it: no driver, delivered when picked
   driver_id      uuid references public.profiles on delete set null,
   lorry_id       uuid references public.lorries on delete set null, -- lorry it was delivered with (set when delivered)
   trip_no        int not null default 1 check (trip_no > 0), -- which trip of the driver's day
