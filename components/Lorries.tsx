@@ -38,11 +38,12 @@ function Modal({ title, subtitle, onClose, children }: { title: string; subtitle
   );
 }
 
-function StatusBadge({ lorry, jobs, today }: { lorry: Lorry; jobs?: LorryJobs; today: string }) {
-  const [text, look] = inMaintenance(lorry, today)
+/** What a lorry is doing today, as text and badge colours. */
+function lorryStatus(lorry: Lorry, jobs: LorryJobs | undefined, today: string): [string, string] {
+  return inMaintenance(lorry, today)
     ? [`Under maintenance${lorry.maintenance_to ? ` until ${fmtDate(lorry.maintenance_to)}` : ""}`, "bg-amber-100 text-amber-800"]
     : !lorry.driver_id
-      ? ["No driver", "bg-slate-100 text-slate-600"]
+      ? ["Spare", "bg-slate-100 text-slate-600"]
       : jobs?.onRoad.length
         ? [`On the road · ${jobs.onRoad.join(", ")}`, "bg-blue-100 text-blue-800"]
         : jobs?.left
@@ -50,8 +51,18 @@ function StatusBadge({ lorry, jobs, today }: { lorry: Lorry; jobs?: LorryJobs; t
           : jobs?.delivered
             ? [`Done today · ${jobs.delivered} delivered`, "bg-emerald-100 text-emerald-800"]
             : ["Available", "bg-emerald-50 text-emerald-700"];
+}
+
+function StatusBadge({ lorry, jobs, today }: { lorry: Lorry; jobs?: LorryJobs; today: string }) {
+  const [text, look] = lorryStatus(lorry, jobs, today);
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${look}`}>{text}</span>;
 }
+
+type View = "grid" | "list";
+const VIEW_KEY = "lorries-view";
+
+/** Lorry numbers in number order: 2 before 10, "46A" after "46". */
+const byLorryNo = (a: Lorry, b: Lorry) => a.lorry_no.localeCompare(b.lorry_no, undefined, { numeric: true, sensitivity: "base" });
 
 export function Lorries({
   lorries,
@@ -105,24 +116,184 @@ export function Lorries({
     else run(() => setLorryDriver(lorry.id, driverId));
   }
 
+  const sorted = [...lorries].sort(byLorryNo);
+
+  // Grid or list, remembered on this device.
+  const [view, setView] = useState<View>("grid");
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(VIEW_KEY) === "list") setView("list");
+    } catch {}
+  }, []);
+  function changeView(v: View) {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {}
+  }
+
+  const [exporting, setExporting] = useState(false);
+  async function exportExcel() {
+    setExporting(true);
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Lorries");
+      ws.columns = [
+        { header: "Lorry", key: "no", width: 8 },
+        { header: "Plate", key: "plate", width: 12 },
+        { header: "Branch", key: "branch", width: 14 },
+        { header: "Driver", key: "driver", width: 22 },
+        { header: `Status (${fmtDate(today)})`, key: "status", width: 34 },
+        { header: "Maintenance from", key: "from", width: 16 },
+        { header: "Back in service", key: "to", width: 16 },
+        { header: "Maintenance note", key: "note", width: 28 },
+      ];
+      ws.getRow(1).font = { bold: true };
+      for (const l of sorted) {
+        ws.addRow({
+          no: l.lorry_no,
+          plate: l.plate_no ?? "",
+          branch: l.branch ? branchName(l.branch) : "",
+          driver: l.driver_id ? name(l.driver_id) : "Spare",
+          status: lorryStatus(l, l.driver_id ? jobs[l.driver_id] : undefined, today)[0],
+          from: l.maintenance_from ? fmtDate(l.maintenance_from) : "",
+          to: l.maintenance_to ? fmtDate(l.maintenance_to) : "",
+          note: l.maintenance_note ?? "",
+        });
+      }
+      const buf = await wb.xlsx.writeBuffer();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      a.download = `Lorries - ${branch ? branchName(branch) : "All branches"} - ${today}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      setError("Couldn't export — try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  /** The driver dropdown, the same in both views. */
+  function driverSelect(l: Lorry) {
+    const choices = drivers.filter((d) => !l.branch || !d.branch || d.branch === l.branch || d.id === l.driver_id);
+    return (
+      <select
+        disabled={pending}
+        aria-label={`Driver of lorry ${l.lorry_no}`}
+        value={l.driver_id ?? ""} // always the saved driver: a cancelled change snaps back
+        onChange={(e) => pickDriver(l, e.target.value || null)}
+        className="input"
+      >
+        <option value="">Spare (no driver)</option>
+        {choices.map((d) => {
+          const on = allLorries.find((x) => x.driver_id === d.id && x.id !== l.id);
+          return (
+            <option key={d.id} value={d.id}>
+              {d.full_name}
+              {on ? ` (on lorry ${on.lorry_no})` : ""}
+            </option>
+          );
+        })}
+      </select>
+    );
+  }
+
+  function maintenanceButtons(l: Lorry) {
+    return l.maintenance_from ? (
+      <>
+        <button type="button" disabled={pending} onClick={() => run(() => endMaintenance(l.id))} className="btn-secondary py-1.5 text-xs">
+          ✅ Back in service
+        </button>
+        <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
+          Change dates
+        </button>
+      </>
+    ) : (
+      <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
+        🔧 Maintenance
+      </button>
+    );
+  }
+
+  const viewButton = (v: View, label: string) => (
+    <button
+      type="button"
+      onClick={() => changeView(v)}
+      aria-pressed={view === v}
+      className={`px-3 py-1.5 text-sm font-medium ${view === v ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:text-slate-900"}`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {error ? <p className="text-sm text-rose-700">{error}</p> : <span />}
-        <button type="button" onClick={() => setEditing("new")} className="btn-primary">
-          + Add lorry
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex overflow-hidden rounded-lg border border-slate-200" role="group" aria-label="View">
+            {viewButton("grid", "▦ Grid")}
+            {viewButton("list", "☰ List")}
+          </div>
+          <button type="button" disabled={exporting || !sorted.length} onClick={exportExcel} className="btn-secondary">
+            {exporting ? "Exporting…" : "Excel"}
+          </button>
+          <button type="button" onClick={() => setEditing("new")} className="btn-primary">
+            + Add lorry
+          </button>
+        </div>
       </div>
 
-      {lorries.length === 0 ? (
+      {sorted.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">
           No lorries {branch ? `in ${branchName(branch)} branch` : "yet"}. Add one to link it to a driver.
         </div>
+      ) : view === "list" ? (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Lorry</th>
+                <th className="px-4 py-3">Plate</th>
+                <th className="px-4 py-3">Branch</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Driver</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sorted.map((l) => (
+                <tr key={l.id} className={inMaintenance(l, today) ? "bg-amber-50/50" : ""}>
+                  <td className="whitespace-nowrap px-4 py-2 font-semibold">{l.lorry_no}</td>
+                  <td className="whitespace-nowrap px-4 py-2">{l.plate_no || <span className="text-slate-400">—</span>}</td>
+                  <td className="whitespace-nowrap px-4 py-2">{l.branch ? branchName(l.branch) : <span className="text-slate-400">—</span>}</td>
+                  <td className="px-4 py-2">
+                    <StatusBadge lorry={l} jobs={l.driver_id ? jobs[l.driver_id] : undefined} today={today} />
+                    {l.maintenance_from && l.maintenance_from > today && (
+                      <p className="mt-1 text-xs text-amber-700">Maintenance from {fmtDate(l.maintenance_from)}</p>
+                    )}
+                    {l.maintenance_note && inMaintenance(l, today) && <p className="mt-1 text-xs text-amber-800">🔧 {l.maintenance_note}</p>}
+                  </td>
+                  <td className="min-w-48 px-4 py-2">{driverSelect(l)}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
+                      {maintenanceButtons(l)}
+                      <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
+                        Edit
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {lorries.map((l) => {
+          {sorted.map((l) => {
             const booked = l.maintenance_from && l.maintenance_from > today;
-            const choices = drivers.filter((d) => !l.branch || !d.branch || d.branch === l.branch || d.id === l.driver_id);
             return (
               <section key={l.id} className={`card flex flex-col gap-3 p-4 ${inMaintenance(l, today) ? "border-amber-300" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
@@ -149,43 +320,12 @@ export function Lorries({
 
                 <label className="block">
                   <span className="label">Driver</span>
-                  <select
-                    disabled={pending}
-                    value={l.driver_id ?? ""} // always the saved driver: a cancelled change snaps back
-                    onChange={(e) => pickDriver(l, e.target.value || null)}
-                    className="input"
-                  >
-                    <option value="">No driver</option>
-                    {choices.map((d) => {
-                      const on = allLorries.find((x) => x.driver_id === d.id && x.id !== l.id);
-                      return (
-                        <option key={d.id} value={d.id}>
-                          {d.full_name}
-                          {on ? ` (on lorry ${on.lorry_no})` : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  {driverSelect(l)}
                 </label>
 
                 {l.maintenance_note && inMaintenance(l, today) && <p className="text-sm text-amber-800">🔧 {l.maintenance_note}</p>}
 
-                <div className="flex flex-wrap gap-2">
-                  {l.maintenance_from ? (
-                    <>
-                      <button type="button" disabled={pending} onClick={() => run(() => endMaintenance(l.id))} className="btn-secondary py-1.5 text-xs">
-                        ✅ Back in service
-                      </button>
-                      <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
-                        Change dates
-                      </button>
-                    </>
-                  ) : (
-                    <button type="button" onClick={() => setServicing(l)} className="btn-secondary py-1.5 text-xs">
-                      🔧 Maintenance
-                    </button>
-                  )}
-                </div>
+                <div className="flex flex-wrap gap-2">{maintenanceButtons(l)}</div>
 
                 {(events[l.id]?.length ?? 0) > 0 && (
                   <details className="text-sm">
