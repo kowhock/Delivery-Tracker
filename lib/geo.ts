@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { storeAddress } from "./branches";
+import { BRANCHES, storeAddress } from "./branches";
 import { pointsForKm } from "./commission";
 import { mapAddress } from "./format";
 
@@ -51,9 +51,12 @@ async function drivingKm(from: LatLng, to: LatLng): Promise<number> {
   return m / 1000;
 }
 
-// Store locations don't move; look each one up once per server instance.
+// Store locations don't move: a store with a map pin uses it as is; the others are looked up
+// once per server instance.
 const storeCache = new Map<string, Promise<Geocoded | null>>();
 function storeLocation(address: string) {
+  const pin = BRANCHES.find((b) => b.store === address)?.pin;
+  if (pin) return Promise.resolve<Geocoded>({ at: pin, matched: address, approx: false });
   if (!storeCache.has(address)) storeCache.set(address, geocode(address).catch((e) => (storeCache.delete(address), Promise.reject(e))));
   return storeCache.get(address)!;
 }

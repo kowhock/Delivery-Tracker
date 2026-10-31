@@ -7,36 +7,44 @@
  * - soPrefix:  SO numbers start with it
  * - locations: AutoCount "Sales Location" / "Agent" values that mean this branch
  * - store:     the store's address; delivery distance (and driver points) is measured from here
+ * - pin:       the store's exact map pin; when set, distance is measured from it instead of the
+ *              address (Google can't find many lot / "Batu" addresses)
  */
 export const BRANCHES = [
   {
     code: "GP", name: "Gelang Patah", doPrefix: "GPD", icbPrefix: "M-GP", soPrefix: "GPS", locations: ["GPS", "GP"],
     store: "Lot 261 Mukim Jelutong, Jalan Ulu Choh, 81550 Gelang Patah, Johor",
+    pin: null,
   },
   {
     // TODO: Pandan store address — until it's set, PD deliveries need points keyed in on Driver status.
     code: "PD", name: "Pandan", doPrefix: "PDD", icbPrefix: "M-PD", soPrefix: "PDS", locations: ["PD", "PDS"],
     store: "Jalan Kangkar Tebrau, Kangkar Tebrau Baru, 81100 Johor Bahru, Johor Darul Ta'zim",
+    pin: null,
   },
   {
     code: "KS", name: "Kempas", doPrefix: "KSD", icbPrefix: "M-KS", soPrefix: "KSS", locations: ["KP", "KS", "KSS"],
     store: "Lot 44565, Jalan Kempas Baru, Kempas Baru, 81300 Johor Bahru, Johor",
+    pin: null,
   },
   {
     code: "MS", name: "Masai", doPrefix: "MSD", icbPrefix: "M-MS", soPrefix: "MSS", locations: ["MS", "MSS"],
     store: "Jalan Besar, Kampung Pertanian, 81750 Pasir Gudang, Johor",
+    pin: null,
   },
   {
     code: "PT", name: "Pontian", doPrefix: "PTD", icbPrefix: "M-PT", soPrefix: "PTS", locations: ["PT", "PTS"],
     store: "Lot 3863, Batu 32, Jalan Johor, 82000 Pontian, Johor, Malaysia",
+    pin: { lat: 1.515167, lng: 103.448833 }, // Google Maps pin at the store (1°30'54.6"N 103°26'55.8"E)
   },
   {
     // TODO: soPrefix / locations guessed from the DO prefix (SND) — check against AutoCount.
     code: "SL", name: "Seelong", doPrefix: "SND", icbPrefix: "M-SN", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
     store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
+    pin: null,
   },
   // NB2: a branch of its own, with no store set (so no delivery distance).
-  { code: "NB2", name: "NB2", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null },
+  { code: "NB2", name: "NB2", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null, pin: null },
 ] as const;
 
 const prefixOf = (docNo: string) => docNo.trim().toUpperCase().split("-")[0];
