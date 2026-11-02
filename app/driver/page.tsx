@@ -3,7 +3,7 @@ import { fmtDate, todayMY } from "@/lib/format";
 import type { DeliveryOrder } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
 import { CommissionBar } from "@/components/CommissionBar";
-import { dayTotals, withTripPoints } from "@/lib/commission";
+import { dayTotals, pointsVisible, withTripPoints } from "@/lib/commission";
 import { failedAttempts } from "@/lib/attempts";
 import { signOut } from "../actions";
 import Link from "next/link";
@@ -82,7 +82,11 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
   // failed tries at the end of their trip. Points shown per DO follow the trip rule (one full-points
   // DO per trip, the rest 1) — failed tries count in it like they do for commission.
   const withPoints = withTripPoints<DeliveryOrder | FailedTry>([...((data ?? []) as DeliveryOrder[]), ...failedTries]);
-  const jobs = withPoints.filter((j): j is DeliveryOrder & { extraStop: boolean } => !("failedTry" in j));
+  // A DO's points are only revealed to the driver once they've finished it (delivered, or failed —
+  // which earns too). Stripped here on the server so they never reach the browser before that.
+  const jobs = withPoints
+    .filter((j): j is DeliveryOrder & { extraStop: boolean } => !("failedTry" in j))
+    .map((j) => (pointsVisible(j.status) ? j : { ...j, points: null }));
   const done = jobs.filter((j) => j.status === "delivered").length;
   const trips: { no: number; jobs: typeof jobs; failed: (FailedTry & { extraStop: boolean })[] }[] = [];
   for (const j of jobs) {

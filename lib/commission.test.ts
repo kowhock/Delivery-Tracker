@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commissionForDay, dayTotals, EXTRA_STOP_POINTS, pointsForKm, sumDays, withTripPoints } from "./commission";
+import { commissionForDay, dayTotals, EXTRA_STOP_POINTS, pointsForKm, pointsVisible, sumDays, withTripPoints } from "./commission";
 
 describe("pointsForKm", () => {
   it("gives far points only when the distance is over FAR_KM", () => {
@@ -93,5 +93,13 @@ describe("dayTotals + sumDays", () => {
     });
     // 11 points → RM 10 on the 27th; 9 points → RM 0 on the 28th (not RM 50 for 20 points combined)
     expect(sumDays(days)).toEqual({ delivered: 4, points: 20, missingPoints: 1, rm: 10 });
+  });
+});
+
+describe("pointsVisible", () => {
+  it("shows the driver a DO's points only once it's delivered or failed", () => {
+    expect(pointsVisible("delivered")).toBe(true);
+    expect(pointsVisible("failed")).toBe(true);
+    for (const s of ["pending", "assigned", "out_for_delivery"]) expect(pointsVisible(s)).toBe(false);
   });
 });

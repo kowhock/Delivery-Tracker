@@ -8,6 +8,7 @@ import { fmtQty, mapAddress, mapsLinks } from "@/lib/format";
 import { MESSAGES, whatsappLink } from "@/lib/whatsapp";
 import { TIME_SLOTS, type DeliveryOrder } from "@/lib/types";
 import { DICT, type Lang } from "@/lib/i18n";
+import { pointsVisible } from "@/lib/commission";
 
 type Dict = (typeof DICT)[Lang];
 
@@ -47,9 +48,11 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
           <div>
             <p className="text-xs text-slate-500">
               {job.do_no}
-              <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
-                ⭐ {job.points == null ? t.ptsPending : t.pts(job.points)}
-              </span>
+              {pointsVisible(job.status) && (
+                <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
+                  ⭐ {job.points == null ? t.ptsPending : t.pts(job.points)}
+                </span>
+              )}
             </p>
             <h2 className="text-lg font-semibold leading-tight text-slate-900">{job.customer_name}</h2>
           </div>

@@ -33,6 +33,11 @@ type TripRow = {
  * replaced, `extraStop` marks DOs cut to EXTRA_STOP_POINTS. Pass the DOs that
  * count (e.g. only delivered ones for commission).
  */
+/** The driver only sees a DO's points once they've finished it: delivered, or failed (which earns too). */
+export function pointsVisible(status: string): boolean {
+  return status === "delivered" || status === "failed";
+}
+
 export function withTripPoints<T extends TripRow>(rows: T[]): (T & { extraStop: boolean })[] {
   const full = new Map<string, string>(); // trip → id of the DO that keeps full points
   for (const r of rows) {
