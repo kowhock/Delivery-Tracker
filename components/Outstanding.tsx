@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { createPortal } from "react-dom";
 import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrls } from "@/app/actions";
 import { fmtDate, fmtDateTime, fmtQty } from "@/lib/format";
@@ -50,6 +51,7 @@ export function DoOutstanding({
   createdAt,
   docDate,
   handOver,
+  print,
 }: {
   doId: string;
   doNo: string;
@@ -60,6 +62,8 @@ export function DoOutstanding({
   createdAt?: string;
   docDate?: string | null;
   handOver?: HandOverInfo;
+  /** Special orders the user may print (lib/special.ts canPrintSpecial): a Print button in the popup. */
+  print?: { printed: number };
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [isOpen, setOpen] = useState(false);
@@ -114,9 +118,16 @@ export function DoOutstanding({
                   createdAt && <p className="text-xs text-slate-400">Created {fmtDate(createdAt)}</p>
                 )}
               </div>
-              <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
-                ×
-              </button>
+              <div className="flex shrink-0 items-center gap-3">
+                {print && (
+                  <Link href={`/deliveries/special/${doId}/print`} className="btn-primary px-3 py-1.5 text-sm" title={print.printed ? "Print again (marked REPRINT)" : "Print as a Delivery Order"}>
+                    {print.printed ? "Reprint" : "Print"}
+                  </Link>
+                )}
+                <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
+                  ×
+                </button>
+              </div>
             </div>
 
             <div className="max-h-[65dvh] space-y-4 overflow-y-auto px-5 py-4">

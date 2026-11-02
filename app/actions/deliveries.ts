@@ -6,12 +6,51 @@ import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
 import { BRANCHES, branchFromDoNo, branchName, branchToSave, canPlan } from "@/lib/branches";
-import { TIME_SLOTS, type DoStatus } from "@/lib/types";
+import { TIME_SLOTS, type DoStatus, type Profile } from "@/lib/types";
+import {
+  SPECIAL_ORDER_BRANCHES,
+  SPECIAL_REASONS,
+  canEditSpecial,
+  canHandleGoods,
+  canPrintSpecial,
+  isGoodsReason,
+  isPrintReason,
+  isSpecialReason,
+  parseSpecialItems,
+  usesSpecialOrders,
+  type SpecialItemInput,
+  type SpecialReason,
+} from "@/lib/special";
 import { checkBranchDriver, nextTrip, notYourBranch } from "./_shared";
 
 // ---------- Delivery orders (staff) ----------------------------------
 
-/** Special DO keyed in by the office (not from AutoCount): own address, points and instructions. */
+/**
+ * Special-order fields (reason, goods items, remark) for branches that use them (lib/special.ts);
+ * null for other branches, which keep the plain special DO.
+ */
+function readSpecialOrder(formData: FormData, branch: string | null, who: Profile) {
+  if (!usesSpecialOrders(branch)) return null;
+  const reason = String(formData.get("special_reason") ?? "");
+  if (!isSpecialReason(reason)) throw new Error("Pick the reason for this special order.");
+  const goods = isGoodsReason(reason);
+  if (goods && !canHandleGoods(who)) throw new Error(`Only admins and dispatchers an admin has allowed can make ${SPECIAL_REASONS[reason]} special orders.`);
+  const withItems = isPrintReason(reason);
+  const items = withItems ? parseSpecialItems(formData) : [];
+  if (withItems && !items.length) throw new Error("Add at least one item (name, UOM and quantity).");
+  return { reason, items };
+}
+
+/** Replaces a special order's items with the ones keyed in. */
+async function saveSpecialItems(supabase: Awaited<ReturnType<typeof requireStaff>>["supabase"], doId: string, items: SpecialItemInput[]) {
+  const { error: delError } = await supabase.from("do_items").delete().eq("do_id", doId);
+  if (delError) throw new Error(delError.message);
+  if (!items.length) return;
+  const { error } = await supabase.from("do_items").insert(items.map((i) => ({ do_id: doId, item_code: "", description: i.description, uom: i.uom, qty: i.qty })));
+  if (error) throw new Error(error.message);
+}
+
+/** Special DO keyed in by the office (not from AutoCount): own address, points and remark. */
 export async function createSpecialDo(formData: FormData) {
   const { supabase, profile } = await requireStaff();
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
@@ -21,6 +60,7 @@ export async function createSpecialDo(formData: FormData) {
   if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
   if (!Number.isInteger(points) || points < 0 || points > 99) throw new Error("Points must be a whole number from 0 to 99.");
   const branch = branchToSave(profile, get("branch")); // dispatchers always create for one of their own branches
+  const so = readSpecialOrder(formData, branch, profile);
   if (driverId) await checkBranchDriver(supabase, driverId, branch);
 
   const { data: d, error } = await supabase
@@ -34,35 +74,45 @@ export async function createSpecialDo(formData: FormData) {
       driver_id: driverId,
       ...(driverId ? { trip_no: await nextTrip(supabase, driverId, date) } : {}),
       status: driverId ? "assigned" : "pending",
-      instructions: get("instructions"),
+      instructions: get("instructions"), // shown as "Remark"
       points,
       points_manual: true,
       source: "special",
+      ...(so ? { special_reason: so.reason } : {}),
     })
     .select("id, do_no")
     .single();
   if (error || !d) throw new Error(error?.message ?? "Could not create the special DO");
+  if (so?.items.length) await saveSpecialItems(supabase, d.id, so.items);
 
-  await supabase.from("status_events").insert({ do_id: d.id, status: "do_created", note: `${d.do_no} special DO created` });
+  const what = so ? `special order (${SPECIAL_REASONS[so.reason]})` : "special DO";
+  await supabase.from("status_events").insert({ do_id: d.id, status: "do_created", note: `${d.do_no} ${what} created` });
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
   revalidatePath("/driver");
   redirect(`/deliveries?from=${date}&to=${date}`);
 }
 
-/** Special DOs can be changed or deleted until the driver starts it. */
+/** Special DOs can be changed until the driver starts it. Never deleted: an admin voids them. */
 const SPECIAL_EDITABLE: DoStatus[] = ["pending", "assigned", "failed"];
 
-/** Only whoever keyed in a special DO (or an admin) may change or delete it. */
+const SPECIAL_COLUMNS = "id, do_no, source, status, branch, driver_id, delivery_date, helper_branch, created_by, special_no, special_reason, print_count, voided_at";
+
+/** Who may change it: see canEditSpecial (goods or printed SDOs → admins + allowed dispatchers; others → creator or admin; void → nobody). */
 async function ownSpecialDo(id: string) {
   const s = await requireStaff();
-  const { data: d } = await s.supabase
-    .from("delivery_orders")
-    .select("id, do_no, source, status, driver_id, delivery_date, helper_branch, created_by")
-    .eq("id", id)
-    .single();
+  const { data: d } = await s.supabase.from("delivery_orders").select(SPECIAL_COLUMNS).eq("id", id).single();
   if (!d || d.source !== "special") throw new Error("Special DO not found.");
-  if (d.created_by !== s.user.id && s.profile.role !== "admin") throw new Error("Only the person who created this special DO can change it.");
+  if (d.voided_at) throw new Error(`${d.do_no} is void and can't be changed.`);
+  if (!canEditSpecial(d, { ...s.profile, id: s.user.id })) {
+    throw new Error(
+      d.print_count > 0
+        ? `${d.do_no} has been printed — only admins and dispatchers an admin has allowed can change it.`
+        : isGoodsReason(d.special_reason)
+        ? `Only admins and dispatchers an admin has allowed can change ${SPECIAL_REASONS[d.special_reason as SpecialReason]} special orders.`
+        : "Only the person who created this special DO can change it."
+    );
+  }
   if (!SPECIAL_EDITABLE.includes(d.status)) throw new Error(`${d.do_no} can't be changed any more — the driver has already started or delivered it.`);
   return { ...s, d };
 }
@@ -79,6 +129,10 @@ export async function updateSpecialDo(id: string, formData: FormData) {
   // A new driver (or none) resets the status like Assign does; same driver keeps it.
   const driverChanged = driverId !== d.driver_id;
   const branch = branchToSave(profile, get("branch"));
+  if (usesSpecialOrders(branch) !== usesSpecialOrders(d.branch)) {
+    throw new Error(`Special orders can't move between ${SPECIAL_ORDER_BRANCHES.join("/")} and other branches — create a new one instead.`);
+  }
+  const so = readSpecialOrder(formData, branch, profile);
   // Only a newly picked driver must be the branch's; one it already had stays.
   if (driverId && driverChanged) await checkBranchDriver(supabase, driverId, branch, d.helper_branch);
   const newTrip = driverId && (driverChanged || date !== d.delivery_date) ? { trip_no: await nextTrip(supabase, driverId, date, id), trip_seq: 0 } : {};
@@ -93,12 +147,17 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       driver_id: driverId,
       ...(driverChanged ? { status: driverId ? "assigned" : "pending", failed_reason: null } : {}),
       ...newTrip,
+      // "Remark" on the form. Kept in instructions, which AutoCount syncs never overwrite; a remark
+      // saved in `remarks` by an earlier version was shown in the same box, so it moves over.
       instructions: get("instructions"),
+      remarks: null,
       points,
       points_manual: true,
+      ...(so ? { special_reason: so.reason } : {}),
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
+  if (so) await saveSpecialItems(supabase, id, so.items);
 
   await supabase.from("status_events").insert({ do_id: id, status: driverChanged ? (driverId ? "assigned" : "pending") : d.status, note: `${d.do_no} special DO edited` });
   revalidatePath("/deliveries");
@@ -107,15 +166,64 @@ export async function updateSpecialDo(id: string, formData: FormData) {
   redirect(`/deliveries?from=${date}&to=${date}`);
 }
 
-export async function deleteSpecialDo(id: string) {
-  const { supabase } = await ownSpecialDo(id);
-  // Its items, history and outstanding notes go with it (on delete cascade).
-  const { error } = await supabase.from("delivery_orders").delete().eq("id", id);
+/**
+ * Admin only. The special order stays in the database, marked VOID; cancelled = true takes it out
+ * of the driver's jobs, trips and points like an AutoCount-cancelled DO.
+ */
+export async function voidSpecialDo(id: string, reason: string) {
+  const { supabase, user, profile } = await requireStaff();
+  if (profile.role !== "admin") throw new Error("Only an admin can void a special order.");
+  const why = reason.trim();
+  if (!why) throw new Error("Enter why it's being voided.");
+  const { data: d } = await supabase.from("delivery_orders").select(SPECIAL_COLUMNS).eq("id", id).single();
+  if (!d || d.source !== "special") throw new Error("Special DO not found.");
+  if (d.voided_at) throw new Error(`${d.do_no} is already void.`);
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({ cancelled: true, voided_at: new Date().toISOString(), voided_by: user.id })
+    .eq("id", id);
   if (error) throw new Error(error.message);
+  await supabase.from("status_events").insert({ do_id: id, status: "voided", note: `${d.do_no} voided: ${why}` });
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
   revalidatePath("/driver");
-  redirect("/deliveries");
+}
+
+/**
+ * Called when a Tumpang Barang SDO is printed (as a Delivery Order). After the first print only admins and allowed
+ * dispatchers can edit it (here and in the database); later prints are marked REPRINT. Returns the new print count.
+ */
+export async function recordSpecialPrint(id: string): Promise<number> {
+  const { supabase, user, profile } = await requireStaff();
+  const { data: d } = await supabase.from("delivery_orders").select(SPECIAL_COLUMNS).eq("id", id).single();
+  if (!d || d.source !== "special") throw new Error("Special DO not found.");
+  if (!canPrintSpecial(d, { ...profile, id: user.id })) {
+    throw new Error(d.voided_at ? `${d.do_no} is void.` : "Only Tumpang Barang special orders can be printed, by admins and dispatchers an admin has allowed.");
+  }
+  const count = d.print_count + 1;
+  const first = d.print_count === 0;
+  const { data: saved, error } = await supabase
+    .from("delivery_orders")
+    .update({ print_count: count, ...(first ? { printed_at: new Date().toISOString(), printed_by: user.id } : {}) })
+    .eq("id", id)
+    .eq("print_count", d.print_count) // two people printing at once: one of them tries again
+    .select("id");
+  if (error) throw new Error(error.message);
+  if (!saved?.length) throw new Error("Someone else just printed it — press Print again.");
+  await supabase.from("status_events").insert({ do_id: id, status: "printed", note: first ? `${d.do_no} printed` : `${d.do_no} reprinted (copy ${count})` });
+  revalidatePath("/deliveries");
+  revalidatePath(`/deliveries/special/${id}`);
+  return count;
+}
+
+/** Admin: lets a dispatcher make, edit and print Tumpang Barang special orders. */
+export async function setSdoGoods(profileId: string, allowed: boolean) {
+  const { supabase, profile } = await requireStaff();
+  if (profile.role !== "admin") throw new Error("Only an admin can change this.");
+  const { data, error } = await supabase.from("profiles").update({ sdo_goods: allowed }).eq("id", profileId).eq("role", "dispatcher").select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("That dispatcher wasn't found.");
+  revalidatePath("/deliveries/special/access");
 }
 
 /**
@@ -127,8 +235,10 @@ export async function linkSpecialDo(id: string, doNo: string) {
   const { supabase, user, profile } = await requireStaff();
   const no = doNo.trim().toUpperCase();
   if (!branchFromDoNo(no)) throw new Error(`"${doNo}" isn't an AutoCount DO number (e.g. GPD-00045135).`);
-  const { data: d } = await supabase.from("delivery_orders").select("do_no, so_id, source, branch, created_by").eq("id", id).single();
+  const { data: d } = await supabase.from("delivery_orders").select("do_no, so_id, source, branch, created_by, special_reason, voided_at").eq("id", id).single();
   if (!d || d.source !== "special") throw new Error("Special DO not found.");
+  if (d.voided_at) throw new Error(`${d.do_no} is void.`);
+  if (isGoodsReason(d.special_reason)) throw new Error(`${SPECIAL_REASONS[d.special_reason as SpecialReason]} special orders aren't AutoCount DOs and can't be linked.`);
   if (d.created_by !== user.id && profile.role !== "admin" && !canPlan(profile.branch, d.branch)) throw new Error(notYourBranch(d.branch ?? ""));
 
   const { error } = await supabase.rpc("link_special_do", { p_special: id, p_do_no: no });

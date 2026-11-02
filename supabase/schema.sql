@@ -21,6 +21,7 @@ create table public.profiles (
   role       public.user_role not null default 'driver',
   branch     text,                           -- GP, PD, …; pages open on this branch first
   lorry_no   text,                           -- number on the driver's lorry, e.g. "93"
+  sdo_goods  boolean not null default false,  -- dispatcher an admin allowed to make/edit/print Tumpang Barang special orders (and edit printed ones)
   created_at timestamptz not null default now()
 );
 
@@ -157,7 +158,7 @@ create table public.delivery_orders (
   created_user   text,                         -- AutoCount Created User
   cancelled      boolean not null default false,
   source         text not null default 'manual', -- autocount | special (keyed in by the office)
-  instructions   text,                         -- office → driver (special DOs)
+  instructions   text,                         -- special DOs: the "Remark" on the form (AutoCount syncs never overwrite it)
   points         int check (points between 0 and 99), -- commission points: 3 if > 20 km, else 2
   points_manual  boolean not null default false, -- keyed in by the office
   distance_km    numeric(7, 2),                -- driving distance from the delivering branch's store
@@ -182,7 +183,14 @@ create table public.delivery_orders (
   wa_error       text,                         -- why the last WhatsApp send failed
   delivered_at   timestamptz,
   created_by     uuid default auth.uid() references public.profiles on delete set null,
-  created_at     timestamptz not null default now()
+  created_at     timestamptz not null default now(),
+  -- Special orders (GP first, see lib/special.ts): why it was keyed in; printed/void state.
+  special_reason text check (special_reason in ('ambil_barang', 'tumpang_barang', 'stock_transfer', 'ambil_give_do', 'other')),
+  print_count    int not null default 0,       -- times printed; > 0 = only admins / sdo_goods edit (guard_special_order)
+  printed_at     timestamptz,                  -- first print
+  printed_by     uuid references public.profiles on delete set null,
+  voided_at      timestamptz,                  -- voided by an admin: kept, cancelled = true, shows VOID
+  voided_by      uuid references public.profiles on delete set null
 );
 create unique index delivery_orders_do_no_ci_key on public.delivery_orders (upper(do_no));
 create index on public.delivery_orders (driver_id, delivery_date);
@@ -410,6 +418,71 @@ end $$;
 create trigger guard_delivery_order
   before update on public.delivery_orders
   for each row execute function public.guard_delivery_order();
+
+-- ---------- Special orders: printed = authorised edits only, void = admin only ---------
+-- Admins and dispatchers an admin ticked (profiles.sdo_goods). No logged-in user (service key /
+-- SQL editor) also passes. Same rule as canHandleGoods in lib/special.ts.
+create or replace function public.can_handle_goods() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select auth.uid() is null or coalesce(
+    (select p.role = 'admin' or p.sdo_goods from public.profiles p where p.id = auth.uid()), false)
+$$;
+
+-- Printed special orders: only admins / allowed dispatchers edit; void = admin only; never deleted.
+-- Checked in the database so no screen or direct API call can get round it.
+create or replace function public.guard_special_order() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.source = 'special' then
+      raise exception '% can''t be deleted — an admin can void it instead.', old.do_no;
+    end if;
+    return old;
+  end if;
+  if old.voided_at is not null then
+    raise exception '% is void and can''t be changed.', old.do_no;
+  end if;
+  if new.voided_at is not null and coalesce(public.my_role()::text, '') <> 'admin' then
+    raise exception 'Only an admin can void a special order.';
+  end if;
+  if new.print_count < old.print_count then
+    raise exception 'The print count of % can''t go down.', old.do_no;
+  end if;
+  if old.print_count > 0 and not public.can_handle_goods() and (
+       new.customer_name, new.address, new.contact_phone, new.remarks, new.instructions,
+       new.points, new.special_reason, new.branch, new.do_no
+     ) is distinct from (
+       old.customer_name, old.address, old.contact_phone, old.remarks, old.instructions,
+       old.points, old.special_reason, old.branch, old.do_no
+     ) then
+    raise exception '% has been printed — only admins and dispatchers an admin has allowed can edit it.', old.do_no;
+  end if;
+  return new;
+end $$;
+
+create trigger guard_special_order
+  before update or delete on public.delivery_orders
+  for each row execute function public.guard_special_order();
+
+-- A void special order's items can't change; a printed one's only by admins / allowed dispatchers.
+create or replace function public.guard_special_items() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  d public.delivery_orders;
+begin
+  select * into d from public.delivery_orders where id = coalesce(new.do_id, old.do_id);
+  if d.id is not null and d.voided_at is not null then
+    raise exception '% is void — its items can''t change.', d.do_no;
+  end if;
+  if d.id is not null and d.print_count > 0 and not public.can_handle_goods() then
+    raise exception '% has been printed — only admins and dispatchers an admin has allowed can change its items.', d.do_no;
+  end if;
+  return coalesce(new, old);
+end $$;
+
+create trigger guard_special_items
+  before insert or update or delete on public.do_items
+  for each row execute function public.guard_special_items();
 
 -- Keeps every failed attempt (see delivery_attempts).
 create or replace function public.record_failed_attempt() returns trigger

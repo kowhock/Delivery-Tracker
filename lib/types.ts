@@ -30,7 +30,7 @@ export const TIME_SLOTS = {
 } as const;
 export type TimeSlot = keyof typeof TIME_SLOTS;
 
-export type Profile = { id: string; full_name: string; real_name: string | null; role: Role; phone: string | null; branch: string | null; lorry_no: string | null };
+export type Profile = { id: string; full_name: string; real_name: string | null; role: Role; phone: string | null; branch: string | null; lorry_no: string | null; sdo_goods?: boolean };
 
 export type SalesOrder = {
   id: string;
@@ -107,6 +107,12 @@ export type DeliveryOrder = {
   started_at?: string | null; // when the driver last tapped Start (from status_events, see lib/delivery-times.ts)
   created_by: string | null; // staff who keyed it in (special DOs)
   created_at: string; // when it came into the system (AutoCount sync or keyed in)
+  special_reason: string | null; // special orders: why it was keyed in (lib/special.ts)
+  print_count: number; // times the special order sheet was printed; > 0 = only admins / sdo_goods may edit
+  printed_at: string | null;
+  printed_by: string | null;
+  voided_at: string | null; // voided by an admin (kept; cancelled = true)
+  voided_by: string | null;
   driver?: { full_name: string; lorry_no: string | null } | null;
   do_items?: DoItem[];
   links?: DoSoLink[];
@@ -121,6 +127,8 @@ export const EVENT_LABEL: Record<string, string> = {
   points: "Points changed",
   trip: "Trip arranged",
   linked: "Linked to AutoCount DO",
+  printed: "Special order printed",
+  voided: "Voided",
   ...DO_STATUS_LABEL,
 };
 

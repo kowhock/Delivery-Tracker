@@ -13,6 +13,7 @@ import { DoOutstanding } from "@/components/Outstanding";
 import { OcCollect } from "@/components/OcCollect";
 import { Redeliver } from "@/components/Redeliver";
 import { LinkSpecialDo } from "@/components/LinkSpecialDo";
+import { SPECIAL_REASONS, canEditSpecial, canPrintSpecial, isGoodsReason, isSpecialReason } from "@/lib/special";
 import { NavForm, NavLink, NavSelect, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -91,8 +92,9 @@ export default async function DeliveriesPage({
   // it's usually an older DO someone is asking about.
   // The page's filters, used for the cards and for the delivered count.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses): Q => {
-    query = query.eq("cancelled", false).in("status", st);
+  const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses, withVoid = false): Q => {
+    // Voided special orders stay on the board (marked VOID) but out of the counts.
+    query = (withVoid ? query.or("cancelled.eq.false,voided_at.not.is.null") : query.eq("cancelled", false)).in("status", st);
     if (!showOc) query = query.eq("is_oc", false);
     if (!showSupplier) query = query.eq("supplier_delivery", false);
     if (locked) query = query.or(deliveredOrSoldBy(locked));
@@ -116,7 +118,9 @@ export default async function DeliveriesPage({
         .select(
           "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name)), attempts:delivery_attempts(id, failed_at, failed_reason)",
           { count: "exact" }
-        )
+        ),
+      statuses,
+      true
     )
       .is("outstanding.cleared_at", null) // only what's still outstanding; doesn't filter the DOs
       .order("delivery_date", { ascending: false })
@@ -194,7 +198,12 @@ export default async function DeliveriesPage({
             {sync && <> · <SyncAge syncedAt={sync.synced_at} /></>}
           </p>
         </div>
-        <Link href="/deliveries/new" className="btn-primary">+ Special DO</Link>
+        <div className="flex items-center gap-3">
+          {profile.role === "admin" && (
+            <Link href="/deliveries/special/access" className="text-sm font-medium text-slate-500 hover:text-slate-900">Special order access</Link>
+          )}
+          <Link href="/deliveries/new" className="btn-primary">+ Special DO</Link>
+        </div>
       </div>
 
       <div className="card flex flex-wrap items-center gap-x-2.5 gap-y-2 p-2">
@@ -303,22 +312,26 @@ export default async function DeliveriesPage({
                   {col.map((j) => {
                     // Only the delivering branch (or the branch it was handed over to) picks the driver and day; others just follow along.
                     const mine = canPlan(profile.branch, j.branch, j.helper_branch);
-                    const plannable = mine && PLANNABLE.includes(j.status);
+                    const plannable = mine && PLANNABLE.includes(j.status) && !j.voided_at;
+                    const who = { ...profile, id: user.id };
                     const late = j.status !== "delivered" && j.delivery_date < today;
                     const open = j.outstanding ?? [];
                     return (
-                      <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""}`}>
+                      <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""} ${j.voided_at ? "opacity-60" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
                             <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path}
                               // Only the DO's own branch assigns it to (or takes it back from) another branch.
+                              print={j.source === "special" && canPrintSpecial(j, who) ? { printed: j.print_count } : undefined}
                               handOver={plannable && !j.is_oc && j.branch && canPlan(profile.branch, j.branch) ? { branch: j.branch, helper: j.helper_branch, hasDriver: !!j.driver_id } : undefined}
                             />
                           </span>
                           <span className="flex items-center gap-2">
-                            {j.source === "special" && !j.special_no && (j.created_by === user.id || profile.role === "admin") && PLANNABLE.includes(j.status) && (
+                            {j.source === "special" && !j.special_no && canEditSpecial(j, who) && PLANNABLE.includes(j.status) ? (
                               <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Edit</Link>
-                            )}
+                            ) : j.source === "special" && (canPrintSpecial(j, who) || profile.role === "admin") ? (
+                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Open</Link>
+                            ) : null}
                             <BranchTags job={j} />
                           </span>
                         </div>
@@ -330,9 +343,11 @@ export default async function DeliveriesPage({
                           <p className="-mt-1.5 text-xs text-slate-400">🔗 Was special DO {j.special_no}</p>
                         ) : j.source === "special" && (
                           <p className="-mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-400">
-                            Special
-                            {/* AutoCount was down: once it has the real DO, link it so syncs update this one. */}
-                            {(j.created_by === user.id || profile.role === "admin" || mine) && <LinkSpecialDo doId={j.id} doNo={j.do_no} />}
+                            {j.voided_at && <span className="rounded bg-rose-600 px-1.5 font-bold text-white">VOID</span>}
+                            Special{isSpecialReason(j.special_reason) && <span className="font-medium text-slate-600">· {SPECIAL_REASONS[j.special_reason]}</span>}
+                            {j.print_count > 0 && <span title="Printed">Printed</span>}
+                            {/* AutoCount was down: once it has the real DO, link it so syncs update this one. Goods SDOs aren't AutoCount DOs. */}
+                            {!j.voided_at && !isGoodsReason(j.special_reason) && (j.created_by === user.id || profile.role === "admin" || mine) && <LinkSpecialDo doId={j.id} doNo={j.do_no} />}
                           </p>
                         )}
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
