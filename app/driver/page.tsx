@@ -9,6 +9,8 @@ import { signOut } from "../actions";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { DICT, LANG_COOKIE, toLang } from "@/lib/i18n";
+import { DoBadge } from "@/components/StatusBadge";
+import { mapAddress } from "@/lib/format";
 import { LangToggle } from "@/components/LangToggle";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 
@@ -56,15 +58,43 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
     .order("trip_no")
     .order("trip_seq")
     .order("created_at");
-  // In the order the office planned on the Driver status page: trip by trip, stop by stop.
-  // Points shown per DO follow the trip rule (one full-points DO per trip, the rest 1).
-  const jobs = withTripPoints((data ?? []) as DeliveryOrder[]);
+  // DOs this driver failed on this day that the office has since sent out again (another trip, day or
+  // driver): they stay in the trip they failed in, so the driver still sees them (and their points).
+  const { data: attemptRows } = await supabase
+    .from("delivery_attempts")
+    .select("id, do_id, driver_id, delivery_date, trip_no, failed_at, failed_reason, do:delivery_orders!inner(do_no, customer_name, address, map_address, points, points_manual, status, driver_id, delivery_date, trip_no, cancelled)")
+    .eq("driver_id", user.id)
+    .eq("delivery_date", date)
+    .eq("do.cancelled", false)
+    .order("failed_at");
+  type FailedTry = { id: string; driver_id: string; delivery_date: string; trip_no: number; failed_at: string; failed_reason: string | null; do_no: string; customer_name: string; address: string | null; map_address: string | null; points: number | null; points_manual: boolean; failedTry: true };
+  const failedTries: FailedTry[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const { do: d, ...a } of (attemptRows ?? []) as any[]) {
+    // Still Failed in this same trip: its own card already shows it.
+    if (d.status === "failed" && d.driver_id === a.driver_id && d.delivery_date === a.delivery_date && d.trip_no === a.trip_no) continue;
+    // Failed more than once in one trip: one card.
+    if (failedTries.some((f) => f.do_no === d.do_no && f.trip_no === a.trip_no)) continue;
+    failedTries.push({ ...a, do_no: d.do_no, customer_name: d.customer_name, address: d.address, map_address: d.map_address, points: d.points, points_manual: d.points_manual, failedTry: true });
+  }
+
+  // In the order the office planned on the Driver status page: trip by trip, stop by stop, with any
+  // failed tries at the end of their trip. Points shown per DO follow the trip rule (one full-points
+  // DO per trip, the rest 1) — failed tries count in it like they do for commission.
+  const withPoints = withTripPoints<DeliveryOrder | FailedTry>([...((data ?? []) as DeliveryOrder[]), ...failedTries]);
+  const jobs = withPoints.filter((j): j is DeliveryOrder & { extraStop: boolean } => !("failedTry" in j));
   const done = jobs.filter((j) => j.status === "delivered").length;
-  const trips: { no: number; jobs: typeof jobs }[] = [];
+  const trips: { no: number; jobs: typeof jobs; failed: (FailedTry & { extraStop: boolean })[] }[] = [];
   for (const j of jobs) {
     if (trips.at(-1)?.no === j.trip_no) trips.at(-1)!.jobs.push(j);
-    else trips.push({ no: j.trip_no, jobs: [j] });
+    else trips.push({ no: j.trip_no, jobs: [j], failed: [] });
   }
+  for (const f of withPoints.filter((j): j is FailedTry & { extraStop: boolean } => "failedTry" in j)) {
+    const trip = trips.find((x) => x.no === f.trip_no);
+    if (trip) trip.failed.push(f);
+    else trips.push({ no: f.trip_no, jobs: [], failed: [f] });
+  }
+  trips.sort((a, b) => a.no - b.no);
 
   return (
     <div className="mx-auto min-h-dvh max-w-lg bg-white pb-10">
@@ -111,10 +141,10 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
 
       <div className="space-y-3 px-4 pt-4">
         <CommissionBar lang={lang} date={date} isToday={isToday} delivered={day.delivered} points={day.points} missingPoints={day.missingPoints} />
-        {jobs.length === 0 && (
+        {jobs.length === 0 && failedTries.length === 0 && (
           <div className="card p-10 text-center text-slate-500">{isToday ? t.noJobsToday : t.noJobsOn(day_(date))}</div>
         )}
-        {trips.map(({ no, jobs: trip }, i) => {
+        {trips.map(({ no, jobs: trip, failed: tripFailed }, i) => {
           // A trip stays folded while an earlier trip still has DOs to deliver; the driver can tap to open it.
           const waitingOn = trips.slice(0, i).find((x) => x.jobs.some((j) => j.status !== "delivered" && j.status !== "failed"));
           return (
@@ -131,6 +161,26 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
               </summary>
               {trip.map((j) => (
                 <JobCard key={j.id} job={j} driverName={profile.full_name} lang={lang} />
+              ))}
+              {/* Failed here and since sent out again: read-only, so the driver still sees it and its points. */}
+              {tripFailed.map((f) => (
+                <article key={f.id} className="card space-y-2 border-rose-200 bg-rose-50/40 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs text-slate-500">
+                        {f.do_no}
+                        <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
+                          ⭐ {f.points == null ? t.ptsPending : t.pts(f.points)}
+                        </span>
+                      </p>
+                      <h2 className="text-lg font-semibold leading-tight text-slate-900">{f.customer_name}</h2>
+                    </div>
+                    <DoBadge status="failed" label={t.status.failed} at={f.failed_at} />
+                  </div>
+                  {mapAddress(f) && <p className="text-sm text-slate-700">{mapAddress(f)}</p>}
+                  {f.failed_reason && <p className="text-sm text-rose-600">{t.failed(t.failReasons[f.failed_reason] ?? f.failed_reason)}</p>}
+                  <p className="text-xs text-slate-500">↻ {t.givenOutAgain}</p>
+                </article>
               ))}
             </details>
           );

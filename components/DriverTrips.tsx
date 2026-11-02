@@ -256,8 +256,10 @@ export function DriverTrips({
             <div className="divide-y divide-slate-100">
               {dates.map((date) => {
                 const day = mine.filter((j) => j.delivery_date === date);
-                const trips = [...new Set(day.map((j) => j.trip_no))].sort((a, b) => a - b);
-                if (trips.length === 0) trips.push(1);
+                // Every trip from 1 up to the last one, so a trip whose DOs were all moved away still shows
+                // (empty) and the numbers never skip.
+                const last = Math.max(1, ...day.map((j) => j.trip_no));
+                const trips = Array.from({ length: last }, (_, i) => i + 1);
                 const next = trips[trips.length - 1] + 1;
                 return (
                   <div key={date} className="flex flex-col gap-2 px-4 py-3 md:flex-row">
