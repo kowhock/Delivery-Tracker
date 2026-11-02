@@ -43,9 +43,18 @@ export const BRANCHES = [
     store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
     pin: null,
   },
-  // NB2: a branch of its own, with no store set (so no delivery distance).
+  // NB2: a branch of its own, with no store set (so no delivery distance). Has lorries: see LORRY_ONLY_BRANCHES.
   { code: "NB2", name: "NB2", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null, pin: null },
 ] as const;
+
+/**
+ * Branches that run lorries: every branch with a store, plus these store-less ones (NB2 — lorries
+ * only; with no store its delivery distance / points stay keyed in by hand).
+ */
+const LORRY_ONLY_BRANCHES: readonly string[] = ["NB2"];
+export const hasLorries = (code: string | null | undefined) =>
+  BRANCHES.some((b) => b.code === code && (!!b.store || LORRY_ONLY_BRANCHES.includes(b.code)));
+export const LORRY_BRANCHES = BRANCHES.filter((b) => hasLorries(b.code));
 
 const prefixOf = (docNo: string) => docNo.trim().toUpperCase().split("-")[0];
 

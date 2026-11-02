@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireStaff } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
-import { BRANCHES, branchName, branchToSave, canPlan, userBranches } from "@/lib/branches";
+import { branchName, branchToSave, canPlan, hasLorries, userBranches } from "@/lib/branches";
 
 // ---------- Lorries ---------------------------------------------------
 
@@ -124,7 +124,7 @@ export async function setLorryBorrow(lorryId: string, to: string | null) {
   const { supabase, profile } = await requireStaff();
   const lorry = await lorryForEdit(supabase, profile, lorryId);
   if (!lorry.branch) throw new Error("Give this lorry a branch first.");
-  if (to !== null && (to === lorry.branch || !BRANCHES.some((b) => b.code === to && b.store))) throw new Error("Pick another branch.");
+  if (to !== null && (to === lorry.branch || !hasLorries(to))) throw new Error("Pick another branch.");
   if (to === lorry.borrow_branch) return;
 
   // Taking back: the borrowing branch's driver comes off (the owning branch's own drivers stay).

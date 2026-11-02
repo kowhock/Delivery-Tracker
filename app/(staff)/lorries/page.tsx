@@ -1,5 +1,5 @@
 import { requireStaff } from "@/lib/auth";
-import { BRANCHES, branchName, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
+import { LORRY_BRANCHES, branchName, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { todayMY } from "@/lib/format";
 import type { Lorry, Profile } from "@/lib/types";
 import { Lorries, type LorryJobs, type LorryEvent } from "@/components/Lorries";
@@ -23,7 +23,7 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
   // Every store branch is listed, even one with no lorries or drivers yet (so its first lorry can be added).
   const branches =
     locked ??
-    [...new Set([...BRANCHES.filter((b) => b.store).map((b) => b.code), ...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
+    [...new Set([...LORRY_BRANCHES.map((b) => b.code), ...allLorries.map((l) => l.branch), ...drivers.map((d) => d.branch), branch].filter((b): b is string => !!b))].sort();
   // A branch's own lorries, plus ones borrowed to it ("Borrow to").
   const lorries = branch
     ? allLorries.filter((l) => l.branch === branch || l.borrow_branch === branch)

@@ -127,3 +127,14 @@ describe("driversForBranch", () => {
     expect(driversForBranch(all, "")).toBe(all);
   });
 });
+
+import { LORRY_BRANCHES, hasLorries } from "./branches";
+describe("hasLorries", () => {
+  it("store branches plus NB2", () => {
+    expect(hasLorries("NB2")).toBe(true);
+    expect(hasLorries("GP")).toBe(true);
+    expect(hasLorries("XX")).toBe(false);
+    expect(hasLorries(null)).toBe(false);
+    expect(LORRY_BRANCHES.map((b) => b.code)).toContain("NB2");
+  });
+});

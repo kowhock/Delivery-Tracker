@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { endMaintenance, saveLorry, setLorryBorrow, setLorryDriver, setMaintenance } from "@/app/actions";
-import { BRANCHES, branchName, canPlan, userBranches } from "@/lib/branches";
+import { LORRY_BRANCHES, branchName, canPlan, userBranches } from "@/lib/branches";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { inMaintenance, type Lorry } from "@/lib/types";
 
@@ -523,7 +523,7 @@ function BorrowForm({ lorry, onClose, onSave }: { lorry: Lorry; onClose: () => v
         <span className="label">Branch</span>
         <select value={to} onChange={(e) => setTo(e.target.value)} className="input">
           <option value="" disabled>Choose branch…</option>
-          {BRANCHES.filter((b) => b.store && b.code !== lorry.branch).map((b) => (
+          {LORRY_BRANCHES.filter((b) => b.code !== lorry.branch).map((b) => (
             <option key={b.code} value={b.code}>{b.name}</option>
           ))}
         </select>
@@ -569,7 +569,7 @@ function LorryForm({ lorry, branch, lockedBranches, onClose }: { lorry: Lorry | 
             <span className="label">Branch</span>
             <select name="branch" defaultValue={lorry?.branch ?? branch ?? ""} className="input">
               {!lockedBranches && <option value="">No branch</option>}
-              {BRANCHES.filter((b) => b.store && (!lockedBranches || lockedBranches.includes(b.code))).map((b) => (
+              {LORRY_BRANCHES.filter((b) => !lockedBranches || lockedBranches.includes(b.code)).map((b) => (
                 <option key={b.code} value={b.code}>{b.name}</option>
               ))}
             </select>
