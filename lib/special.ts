@@ -6,7 +6,7 @@
  *
  * - Every SDO of these branches needs a reason.
  * - Tumpang Barang (the "goods" reason) has its own items and prints as a Delivery Order; only
- *   admins and dispatchers an admin ticked (profiles.sdo_goods) can pick it, edit or print it.
+ *   admins and dispatchers an admin ticked on Admin access (profiles.sdo_goods) can pick it, edit or print it.
  * - Every other reason (Ambil Barang included) is a normal special order: creator or admin edits.
  * - Once printed, only admins and ticked dispatchers (canHandleGoods) can edit it; reprints are marked REPRINT.
  * - No special DO is ever deleted (any branch, any reason): an admin voids it (kept, shown as VOID).

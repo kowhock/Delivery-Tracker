@@ -1,4 +1,5 @@
 import { requireStaff } from "@/lib/auth";
+import { canEditPoints } from "@/lib/access";
 import { lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { dateRange, todayMY } from "@/lib/format";
 import type { DeliveryOrder, Profile } from "@/lib/types";
@@ -116,7 +117,7 @@ export default async function DriversPage({
           No drivers {branch ? `in ${branch} branch` : "yet"}. Set a driver&apos;s branch in Supabase (<code>profiles.branch</code>).
         </div>
       ) : (
-        <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} />
+        <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} canEditPoints={canEditPoints(profile)} />
       )}
     </div>
   );

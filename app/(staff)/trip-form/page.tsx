@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
+import { canEditPoints } from "@/lib/access";
 import { branchName, lockedBranches } from "@/lib/branches";
 import { addDays, dateRange, fmtTime, mapAddress, todayMY } from "@/lib/format";
 import { startedTimes } from "@/lib/delivery-times";
@@ -143,6 +144,7 @@ export default async function TripFormPage({
           to={dates[dates.length - 1]}
           days={days}
           driverId={driver.id}
+          canEditPoints={canEditPoints(profile)}
         />
       )}
     </div>

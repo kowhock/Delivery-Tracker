@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { NO_POINTS_ACCESS, canEditPoints } from "@/lib/access";
 import { requireStaff } from "@/lib/auth";
 import { bestRoute } from "@/lib/geo";
 import { branchName, canPlan, storeAddress } from "@/lib/branches";
@@ -172,6 +173,7 @@ export async function recordTripFormDo(input: { driverId: string; date: string; 
   if (timeIn && timeIn > timeBack) throw new Error("Time in is after time back.");
   const points = input.points.trim() === "" ? null : Number(input.points);
   if (points != null && (!Number.isInteger(points) || points < 0 || points > 99)) throw new Error("Points must be a whole number from 0 to 99.");
+  if (points != null && !canEditPoints(profile)) throw new Error(NO_POINTS_ACCESS);
 
   const { data: driver } = await supabase.from("profiles").select("full_name, role").eq("id", input.driverId).single();
   if (!driver || driver.role !== "driver") throw new Error("Driver not found");

@@ -28,11 +28,14 @@ export function DriverTrips({
   dates,
   jobs: initial,
   stats,
+  canEditPoints = false,
 }: {
   drivers: Driver[];
   dates: string[];
   jobs: DeliveryOrder[];
   stats: Record<string, DriverStats>;
+  /** May change points (lib/access.ts). */
+  canEditPoints?: boolean;
 }) {
   const [jobs, setJobs] = useState(initial);
   useEffect(() => setJobs(initial), [initial]);
@@ -202,7 +205,7 @@ export function DriverTrips({
                 </div>
                 {j.instructions && <p className="line-clamp-2 rounded bg-violet-50 px-1.5 py-0.5 text-violet-800">📋 {j.instructions}</p>}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <PointsEditor job={j} extraStop={extraStops.has(j.id)} onEditing={(on) => setEditingPoints(on ? j.id : null)} />
+                  <PointsEditor job={j} extraStop={extraStops.has(j.id)} canEdit={canEditPoints} onEditing={(on) => setEditingPoints(on ? j.id : null)} />
                   <BranchTags job={j} />
                 </div>
                 {j.status === "failed" && j.failed_reason && <p className="text-rose-600">{j.failed_reason}</p>}

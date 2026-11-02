@@ -22,6 +22,8 @@ import {
   type SpecialReason,
 } from "@/lib/special";
 import { checkBranchDriver, nextTrip, notYourBranch } from "./_shared";
+import { NO_POINTS_ACCESS, canEditPoints, isStaffAccess, type StaffAccess } from "@/lib/access";
+import { NEAR_POINTS } from "@/lib/commission";
 
 // ---------- Delivery orders (staff) ----------------------------------
 
@@ -54,7 +56,8 @@ async function saveSpecialItems(supabase: Awaited<ReturnType<typeof requireStaff
 export async function createSpecialDo(formData: FormData) {
   const { supabase, profile } = await requireStaff();
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
-  const points = Number(formData.get("points"));
+  // Without points access the form has no Points box: the default, adjusted later by someone allowed.
+  const points = canEditPoints(profile) ? Number(formData.get("points")) : NEAR_POINTS;
   const driverId = get("driver_id");
   const date = get("delivery_date") ?? todayMY();
   if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
@@ -120,7 +123,8 @@ async function ownSpecialDo(id: string) {
 export async function updateSpecialDo(id: string, formData: FormData) {
   const { supabase, profile, d } = await ownSpecialDo(id);
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
-  const points = Number(formData.get("points"));
+  const pointsAccess = canEditPoints(profile); // without it, the points stay as they are
+  const points = pointsAccess ? Number(formData.get("points")) : 0;
   const driverId = get("driver_id");
   const date = get("delivery_date") ?? todayMY();
   if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
@@ -151,8 +155,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       // saved in `remarks` by an earlier version was shown in the same box, so it moves over.
       instructions: get("instructions"),
       remarks: null,
-      points,
-      points_manual: true,
+      ...(pointsAccess ? { points, points_manual: true } : {}),
       ...(so ? { special_reason: so.reason } : {}),
     })
     .eq("id", id);
@@ -216,11 +219,12 @@ export async function recordSpecialPrint(id: string): Promise<number> {
   return count;
 }
 
-/** Admin: lets a dispatcher make, edit and print Tumpang Barang special orders. */
-export async function setSdoGoods(profileId: string, allowed: boolean) {
+/** Admin: ticks / unticks one permission (lib/access.ts) for a dispatcher on Admin access. */
+export async function setStaffAccess(profileId: string, access: StaffAccess, allowed: boolean) {
   const { supabase, profile } = await requireStaff();
   if (profile.role !== "admin") throw new Error("Only an admin can change this.");
-  const { data, error } = await supabase.from("profiles").update({ sdo_goods: allowed }).eq("id", profileId).eq("role", "dispatcher").select("id");
+  if (!isStaffAccess(access)) throw new Error("Unknown permission.");
+  const { data, error } = await supabase.from("profiles").update({ [access]: allowed }).eq("id", profileId).eq("role", "dispatcher").select("id");
   if (error) throw new Error(error.message);
   if (!data?.length) throw new Error("That dispatcher wasn't found.");
   revalidatePath("/deliveries/special/access");
@@ -253,7 +257,8 @@ export async function linkSpecialDo(id: string, doNo: string) {
 
 /** Office keys in a DO's points (e.g. the address couldn't be found). null = go back to the distance rule. */
 export async function setPoints(doId: string, points: number | null) {
-  const { supabase } = await requireStaff();
+  const { supabase, profile } = await requireStaff();
+  if (!canEditPoints(profile)) throw new Error(NO_POINTS_ACCESS);
   if (points != null && (!Number.isInteger(points) || points < 0 || points > 99)) throw new Error("Points must be 0–99.");
   const { data: before } = await supabase.from("delivery_orders").select("so_id, points").eq("id", doId).single();
   const { error } = await supabase
@@ -284,7 +289,8 @@ export async function setPoints(doId: string, points: number | null) {
  * null = back to the delivery address. Replaces keyed-in points.
  */
 export async function setMapAddress(doId: string, address: string | null) {
-  const { supabase } = await requireStaff();
+  const { supabase, profile } = await requireStaff();
+  if (!canEditPoints(profile)) throw new Error(NO_POINTS_ACCESS);
   if (!mapsEnabled()) throw new Error("GOOGLE_MAPS_API_KEY is not set on the server.");
   const { error } = await supabase
     .from("delivery_orders")

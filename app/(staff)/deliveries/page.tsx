@@ -200,7 +200,7 @@ export default async function DeliveriesPage({
         </div>
         <div className="flex items-center gap-3">
           {profile.role === "admin" && (
-            <Link href="/deliveries/special/access" className="text-sm font-medium text-slate-500 hover:text-slate-900">Special order access</Link>
+            <Link href="/deliveries/special/access" className="text-sm font-medium text-slate-500 hover:text-slate-900">Admin access</Link>
           )}
           <Link href="/deliveries/new" className="btn-primary">+ Special DO</Link>
         </div>

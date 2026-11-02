@@ -105,3 +105,34 @@ drop trigger if exists guard_special_items on public.do_items;
 create trigger guard_special_items
   before insert or update or delete on public.do_items
   for each row execute function public.guard_special_items();
+
+-- 2026-11-02: Points access — only admins and dispatchers an admin ticks (Deliveries → Admin access)
+-- can change a DO's points. Existing points are not changed.
+alter table public.profiles add column if not exists points_edit boolean not null default false;
+
+-- Only admins and dispatchers an admin ticked (profiles.points_edit) change points by hand: keyed-in
+-- points, back to the distance rule, or the address used for points (map_address). The distance
+-- rule itself (points_manual stays false) and server syncs (no user) are not affected. lib/access.ts.
+create or replace function public.can_edit_points() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select auth.uid() is null or coalesce(
+    (select p.role = 'admin' or p.points_edit from public.profiles p where p.id = auth.uid()), false)
+$$;
+
+create or replace function public.guard_points() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if public.is_staff() and not public.can_edit_points() and (
+       new.map_address is distinct from old.map_address
+    or (old.points_manual and not new.points_manual)
+    or (new.points_manual and (new.points is distinct from old.points or not old.points_manual))
+  ) then
+    raise exception 'Only admins and staff an admin has allowed can change the points of %.', old.do_no;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists guard_points on public.delivery_orders;
+create trigger guard_points
+  before update on public.delivery_orders
+  for each row execute function public.guard_points();

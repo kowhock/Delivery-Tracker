@@ -5,6 +5,7 @@ import { todayMY } from "@/lib/format";
 import { createSpecialDo } from "@/app/actions";
 import { SpecialDoForm } from "@/components/SpecialDoForm";
 import { canHandleGoods } from "@/lib/special";
+import { canEditPoints } from "@/lib/access";
 import type { Profile } from "@/lib/types";
 
 export default async function NewSpecialDoPage() {
@@ -23,6 +24,7 @@ export default async function NewSpecialDoPage() {
         lockedTo={lockedBranches(profile)}
         submitLabel="Create special DO"
         canGoods={canHandleGoods(profile)}
+        canPoints={canEditPoints(profile)}
         values={{
           customer_name: "",
           address: null,

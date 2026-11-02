@@ -7,6 +7,7 @@ import { updateSpecialDo } from "@/app/actions";
 import { SpecialDoForm } from "@/components/SpecialDoForm";
 import { VoidSpecialDo } from "@/components/VoidSpecialDo";
 import { canEditSpecial, canHandleGoods, canPrintSpecial, isGoodsReason, usesSpecialOrders } from "@/lib/special";
+import { canEditPoints } from "@/lib/access";
 import type { DeliveryOrder, Profile } from "@/lib/types";
 
 /**
@@ -75,6 +76,7 @@ export default async function EditSpecialDoPage({ params }: { params: Promise<{ 
           submitLabel="Save changes"
           values={job}
           canGoods={canHandleGoods(profile)}
+          canPoints={canEditPoints(profile)}
           items={job.do_items ?? []}
         />
       )}

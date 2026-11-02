@@ -19,7 +19,8 @@ type Job = Pick<DeliveryOrder, "id" | "address" | "map_address" | "points" | "po
  * (when the delivery address can't be found), or go back to the distance rule.
  * `extraStop`: another DO in the same trip has the full points, so this one earns EXTRA_STOP_POINTS.
  */
-export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; extraStop?: boolean; onEditing?: (editing: boolean) => void }) {
+/** `canEdit` false (no points access, lib/access.ts): the chip only shows the points. */
+export function PointsEditor({ job, extraStop = false, canEdit = true, onEditing }: { job: Job; extraStop?: boolean; canEdit?: boolean; onEditing?: (editing: boolean) => void }) {
   const [editing, setEditingState] = useState(false);
   const [value, setValue] = useState(String(job.points ?? ""));
   const [address, setAddress] = useState(job.map_address ?? job.address ?? "");
@@ -127,17 +128,18 @@ export function PointsEditor({ job, extraStop = false, onEditing }: { job: Job; 
     <button
       type="button"
       draggable={false}
-      onClick={() => setEditing(true)}
-      title={
+      disabled={!canEdit}
+      onClick={() => canEdit && setEditing(true)}
+      title={!canEdit ? (job.map_address ? `Typed address: ${job.map_address}\n` : "") + "Only admins and allowed staff can change points" : 
         (extraStop ? `Extra stop in this trip: ${EXTRA_STOP_POINTS} pt (${job.points} pts if it were the only DO)\n` : "") +
         (job.map_address ? `Typed address: ${job.map_address}\n` : "") +
         (job.geo_address ? `Matched: ${job.geo_address}\nClick to change points or address` : "Click to set points or type an address")
       }
-      className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+      className={`inline-flex items-center gap-1 rounded-md px-1.5 disabled:cursor-default py-0.5 text-[11px] font-medium ${
         missing ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200 ring-inset" : "bg-yellow-50 text-yellow-800"
       }`}
     >
-      ⭐ {missing ? "Set points" : extraStop ? `${EXTRA_STOP_POINTS} pt` : `${job.points} pts`}
+      ⭐ {missing ? (canEdit ? "Set points" : "No points") : extraStop ? `${EXTRA_STOP_POINTS} pt` : `${job.points} pts`}
       {extraStop ? (
         <span className="font-normal opacity-70">· extra stop ({job.points} alone)</span>
       ) : (

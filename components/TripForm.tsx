@@ -23,7 +23,8 @@ export type TripDo = { id: string; doNo: string; location: string; timeIn: strin
   fromTripForm?: boolean };
 export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
 
-type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[] };
+/** canEditPoints: may type points for a DO added on the form (lib/access.ts); without it the box stays blank. */
+type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[]; canEditPoints: boolean };
 /** What the office typed into the daily form's blank boxes (lorry checks, empty DO boxes…), by box key. */
 type Filled = { filled: Record<string, string>; setFilled: (f: (r: Record<string, string>) => Record<string, string>) => void };
 
@@ -121,7 +122,7 @@ function Blank({ k, label, filled, setFilled, className = "" }: Filled & { k: st
   );
 }
 
-function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, setFilled }: Props & Filled & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
+function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, setFilled, canEditPoints }: Props & Filled & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
   return (
     // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
     <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
@@ -185,7 +186,7 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
             {FIELDS.map((f, k) => (
               <tr key={f}>
                 {pair.map((x, side) => (
-                  <DoBoxRow key={side} field={f} row={k} x={x} at={(field) => boxKey(page, r, side, field)} filled={filled} setFilled={setFilled} driverId={driverId} date={day.date} />
+                  <DoBoxRow key={side} field={f} row={k} x={x} at={(field) => boxKey(page, r, side, field)} filled={filled} setFilled={setFilled} driverId={driverId} date={day.date} canPoints={canEditPoints} />
                 ))}
               </tr>
             ))}
@@ -200,7 +201,7 @@ const LABELS = { doNo: "DO NO.", location: "LOCATION", timeIn: "TIME IN", timeBa
 type Field = keyof typeof LABELS;
 const FIELDS = Object.keys(LABELS) as Field[];
 
-function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date }: Filled & { field: Field; row: number; x?: TripDo; at: (field: string) => string; driverId: string; date: string }) {
+function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoints }: Filled & { field: Field; row: number; x?: TripDo; at: (field: string) => string; driverId: string; date: string; canPoints: boolean }) {
   const value = x?.[field] ?? "";
   const blank = (f: string, className?: string) => <Blank k={at(f)} label={f === "points" ? "Points" : LABELS[field]} filled={filled} setFilled={setFilled} className={className} />;
   return (
@@ -253,7 +254,7 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date }: Fill
           title={x?.manual ? "Points keyed in by staff" : undefined}
         >
           {/* A real DO's points come from Driver status; typed ones reach the totals once the box is saved. */}
-          {x ? x.points ?? "" : blank("points", "text-center")}
+          {x ? x.points ?? "" : canPoints ? blank("points", "text-center") : ""}
         </td>
       ) : null}
     </>

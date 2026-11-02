@@ -34,6 +34,7 @@ export function SpecialDoForm({
   values,
   submitLabel,
   canGoods = false,
+  canPoints = false,
   items = [],
 }: {
   action: (formData: FormData) => Promise<void>;
@@ -44,6 +45,8 @@ export function SpecialDoForm({
   submitLabel: string;
   /** Admin, or a dispatcher an admin allowed: may pick Tumpang Barang (lib/special.ts). */
   canGoods?: boolean;
+  /** Admin, or a dispatcher an admin allowed: may set the points (lib/access.ts). Others get the default. */
+  canPoints?: boolean;
   /** Edit page: the special order's items so far. */
   items?: Pick<DoItem, "description" | "uom" | "qty">[];
 }) {
@@ -114,10 +117,17 @@ export function SpecialDoForm({
           {shown.map((d) => <option key={d.id} value={d.id}>{driverLabel(d)}</option>)}
         </select>
       </div>
-      <div>
-        <label className="label">Points for the driver</label>
-        <input name="points" type="number" min={0} max={99} step={1} defaultValue={values.points ?? NEAR_POINTS} required className="input" />
-      </div>
+      {canPoints ? (
+        <div>
+          <label className="label">Points for the driver</label>
+          <input name="points" type="number" min={0} max={99} step={1} defaultValue={values.points ?? NEAR_POINTS} required className="input" />
+        </div>
+      ) : (
+        <div>
+          <span className="label">Points for the driver</span>
+          <p className="py-2 text-sm text-slate-600">{values.points ?? NEAR_POINTS} pts · set by an admin or allowed staff</p>
+        </div>
+      )}
       <div className="sm:col-span-2">
         {/* One Remark for every special DO: shown to the driver, printed on the Tumpang Barang Delivery Order. Saved in
             `instructions`, which the AutoCount sync never touches (it overwrites `remarks` once linked). */}
