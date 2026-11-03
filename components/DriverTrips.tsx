@@ -6,8 +6,11 @@ import { DoBadge } from "./StatusBadge";
 import { BranchTags } from "./DocLinks";
 import { DoOutstanding } from "./Outstanding";
 import { PointsEditor } from "./PointsEditor";
-import { fmtDate, mapAddress } from "@/lib/format";
+import { mapAddress } from "@/lib/format";
 import { withTripPoints } from "@/lib/commission";
+import { doMatches } from "@/lib/search";
+import { dayDmy } from "@/lib/date-range";
+import { SearchIcon } from "./Icons";
 import { TIME_SLOTS, type DeliveryOrder, type DoStatus } from "@/lib/types";
 
 type Driver = { id: string; full_name: string; real_name?: string | null; branch: string | null; lorry_no: string | null };
@@ -46,6 +49,10 @@ export function DriverTrips({
   const [pending, start] = useTransition();
   const [routes, setRoutes] = useState<Record<string, RouteResult>>({}); // best route per trip, until the trip changes
   const [routing, setRouting] = useState<string | null>(null);
+  // Search box: only matching DOs (and the drivers / days that have them) show. Drag and drop still works.
+  const [search, setSearch] = useState("");
+  const searching = search.trim() !== "";
+  const matches = (j: DeliveryOrder) => doMatches(j, search);
 
   function planRoute(lane: Lane) {
     const key = laneKey(lane);
@@ -98,7 +105,8 @@ export function DriverTrips({
     });
   }
 
-  function renderLane(lane: Lane, laneJobs: DeliveryOrder[], isNew: boolean) {
+  /** `shownNo`: the number on screen — trips are counted 1, 2, 3… over the ones that have DOs (see below). */
+  function renderLane(lane: Lane, laneJobs: DeliveryOrder[], isNew: boolean, shownNo: number) {
     const key = laneKey(lane);
     const delivered = laneJobs.filter((j) => j.status === "delivered").length;
     const notLeft = laneJobs.filter((j) => !LOCKED.includes(j.status)).length;
@@ -121,7 +129,7 @@ export function DriverTrips({
         } ${over === key ? "ring-2 ring-brand-600" : ""}`}
       >
         <div className="flex items-center justify-between px-1 pb-2 text-xs font-semibold text-slate-600">
-          <span>{isNew ? `+ Trip ${lane.tripNo}` : `Trip ${lane.tripNo}`}</span>
+          <span>{isNew ? `+ Trip ${shownNo}` : `Trip ${shownNo}`}</span>
           {!isNew && <span className="font-normal text-slate-400">{delivered}/{laneJobs.length} delivered</span>}
         </div>
         {!isNew && notLeft >= 2 && (
@@ -154,6 +162,7 @@ export function DriverTrips({
         )}
         <div className="flex min-h-12 flex-1 flex-col gap-2">
           {laneJobs.map((j, i) => {
+            if (searching && !matches(j)) return null;
             const locked = LOCKED.includes(j.status);
             return (
               <article
@@ -220,13 +229,34 @@ export function DriverTrips({
     );
   }
 
+  const found = searching ? jobs.filter(matches).length : 0;
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="relative w-full sm:w-96">
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search customer, address or DO no."
+            aria-label="Search customer, address or DO no."
+            className="input py-2 pl-9 pr-3 text-sm"
+          />
+        </label>
+        {searching && (
+          <span className="text-sm text-slate-500">
+            {found ? `${found} DO${found > 1 ? "s" : ""} found` : "No DOs match"}
+            <button type="button" onClick={() => setSearch("")} className="ml-3 text-brand-700 hover:underline">Clear</button>
+          </span>
+        )}
+      </div>
       {error && <p className="rounded-xl bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>}
       {pending && <p className="text-xs text-slate-400">Saving…</p>}
 
       {drivers.map((d) => {
         const mine = jobs.filter((j) => j.driver_id === d.id);
+        if (searching && !mine.some(matches)) return null; // no match for this driver
         const done = mine.filter((j) => j.status === "delivered").length;
         return (
           <section key={d.id} className="card overflow-hidden">
@@ -259,20 +289,24 @@ export function DriverTrips({
             <div className="divide-y divide-slate-100">
               {dates.map((date) => {
                 const day = mine.filter((j) => j.delivery_date === date);
-                // Every trip from 1 up to the last one, so a trip whose DOs were all moved away still shows
-                // (empty) and the numbers never skip.
-                const last = Math.max(1, ...day.map((j) => j.trip_no));
-                const trips = Array.from({ length: last }, (_, i) => i + 1);
+                if (searching && !day.some(matches)) return null; // no match on this day
+                // Only trips that have DOs, numbered 1, 2, 3… on screen: if Trips 1–2 were emptied, Trip 3 shows
+                // as Trip 1. The saved trip_no stays as it is (failed attempts and extra-stop points go by it);
+                // lanes still use it, so drag and drop goes to the right trip. A day with no DOs shows Trip 1.
+                const used = [...new Set(day.map((j) => j.trip_no))].sort((a, b) => a - b);
+                const trips = used.length ? used : [1];
                 const next = trips[trips.length - 1] + 1;
                 return (
                   <div key={date} className="flex flex-col gap-2 px-4 py-3 md:flex-row">
-                    <p className="w-28 shrink-0 text-sm font-medium text-slate-600">{fmtDate(date)}</p>
+                    <p className="w-28 shrink-0 text-sm font-medium tabular-nums text-slate-600">{dayDmy(date)}</p>
                     <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 md:mx-0 md:px-0">
-                      {trips.map((t) => {
+                      {trips.map((t, i) => {
                         const lane = { driverId: d.id, date, tripNo: t };
-                        return renderLane(lane, day.filter((j) => j.trip_no === t).sort(bySeq), false);
+                        const laneJobs = day.filter((j) => j.trip_no === t).sort(bySeq);
+                        if (searching && !laneJobs.some(matches)) return null; // numbers still count every trip
+                        return renderLane(lane, laneJobs, false, i + 1);
                       })}
-                      {day.length > 0 && renderLane({ driverId: d.id, date, tripNo: next }, [], true)}
+                      {day.length > 0 && !searching && renderLane({ driverId: d.id, date, tripNo: next }, [], true, trips.length + 1)}
                     </div>
                   </div>
                 );

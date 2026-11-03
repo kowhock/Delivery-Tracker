@@ -150,18 +150,20 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
         )}
         {trips.map(({ no, jobs: trip, failed: tripFailed }, i) => {
           // A trip stays folded while an earlier trip still has DOs to deliver; the driver can tap to open it.
-          const waitingOn = trips.slice(0, i).find((x) => x.jobs.some((j) => j.status !== "delivered" && j.status !== "failed"));
+          const waitingOn = trips.slice(0, i).findIndex((x) => x.jobs.some((j) => j.status !== "delivered" && j.status !== "failed"));
+          const waiting = waitingOn >= 0;
           return (
-            <details key={no} open={!waitingOn} className="group space-y-3">
+            // Numbered 1, 2, 3… over the trips that have DOs, like Driver status (the saved trip_no can skip).
+            <details key={no} open={!waiting} className="group space-y-3">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-2 pt-2 text-sm font-semibold text-slate-600 [&::-webkit-details-marker]:hidden">
                 <span className="flex items-center gap-1.5">
                   <span className="text-slate-400 transition-transform group-open:rotate-90" aria-hidden>›</span>
-                  {t.trip(no)}
+                  {t.trip(i + 1)}
                 </span>
-                <span className={`font-normal text-slate-400 ${waitingOn ? "hidden group-open:inline" : ""}`}>
+                <span className={`font-normal text-slate-400 ${waiting ? "hidden group-open:inline" : ""}`}>
                   {t.tripDone(trip.filter((x) => x.status === "delivered").length, trip.length)}
                 </span>
-                {waitingOn && <span className="font-normal text-slate-400 group-open:hidden">{t.tripLater(waitingOn.no)}</span>}
+                {waiting && <span className="font-normal text-slate-400 group-open:hidden">{t.tripLater(waitingOn + 1)}</span>}
               </summary>
               {trip.map((j) => (
                 <JobCard key={j.id} job={j} driverName={profile.full_name} lang={lang} />

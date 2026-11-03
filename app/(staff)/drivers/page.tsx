@@ -10,6 +10,7 @@ import { mapsEnabled } from "@/lib/geo";
 import { withStartedAt } from "@/lib/delivery-times";
 import { failedAttempts } from "@/lib/attempts";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
+import { DateRangePicker } from "@/components/DateRangePicker";
 
 const MAX_DAYS = 31;
 
@@ -99,12 +100,7 @@ export default async function DriversPage({
               ))}
             </select>
           )}
-          <label className="flex items-center gap-1.5 text-sm text-slate-500">
-            From <input type="date" name="from" defaultValue={from} className="input w-auto" />
-          </label>
-          <label className="flex items-center gap-1.5 text-sm text-slate-500">
-            To <input type="date" name="to" defaultValue={to} className="input w-auto" />
-          </label>
+          <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={todayMY()} max={MAX_DAYS} />
           <button className="btn-secondary">Go</button>
         </form>
       </div>

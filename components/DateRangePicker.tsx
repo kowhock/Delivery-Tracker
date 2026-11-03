@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { addDays } from "@/lib/format";
 import { dmy, monthGrid, monthRange, orderRange } from "@/lib/date-range";
+import { CalendarIcon } from "./Icons";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -169,12 +170,3 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
   );
 }
 
-/** Calendar outline icon (shown on the left of the dates). */
-function CalendarIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
-      <rect x="3" y="4.5" width="18" height="16.5" rx="2" />
-      <path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
-    </svg>
-  );
-}

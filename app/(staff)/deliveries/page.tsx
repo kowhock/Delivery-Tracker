@@ -9,6 +9,7 @@ import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { SyncAge } from "@/components/SyncAge";
 import { BranchTags } from "@/components/DocLinks";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { SearchIcon } from "@/components/Icons";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
 import { OcCollect } from "@/components/OcCollect";
@@ -44,7 +45,7 @@ const MAX_LOADED = 3000;
 const PLANNABLE: DoStatus[] = ["pending", "assigned", "failed"];
 
 
-const GRID_COLS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5", "lg:grid-cols-6"];
+const GRID_COLS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5", "lg:grid-cols-6", "lg:grid-cols-7"];
 
 const TAB = "rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap";
 const TAB_ON = "bg-white text-slate-900 shadow-sm";
@@ -72,6 +73,10 @@ export default async function DeliveriesPage({
   const from = picked ? sp.from || "" : today;
   const to = picked ? (sp.to && (!from || sp.to >= from) ? sp.to : "") : today;
   const show: DeliveryFilter = sp.show && sp.show in DELIVERY_FILTERS ? (sp.show as DeliveryFilter) : "";
+  const q = (sp.q ?? "").trim();
+  // Search text, safe inside a PostgREST or(…) filter.
+  const term = q.replace(/[,()%*"\\:]/g, " ").replace(/\s+/g, " ").trim();
+  // A search only looks inside the DOs the filters show (dates, status, branch, Also show).
   const statuses = DELIVERY_FILTERS[show].statuses;
   // O/C (customer collects) and Supplier delivery are hidden unless staff pick them under "Also show".
   // (?oc=show is the old link for O/C.)
@@ -80,8 +85,6 @@ export default async function DeliveriesPage({
   const showSupplier = extra === "supplier";
   // Cross-branch: DOs this branch sold that another branch is delivering.
   const crossOnly = sp.xb === "1";
-  const q = (sp.q ?? "").trim();
-  const term = q.replace(/[,()%*]/g, " ").trim();
   const { supabase, user, profile } = await requireStaff();
   // Opens on the user's own branch, like Driver status. Dispatchers can't switch away from theirs.
   const locked = lockedBranches(profile);
@@ -89,8 +92,7 @@ export default async function DeliveriesPage({
   const branch = BRANCHES.some((b) => b.code === pickedBranch) ? pickedBranch : "";
 
   // No dates picked = every delivery; otherwise only deliveries dated inside the range.
-  // Searching a DO number looks across all dates (and branches, unless the user is kept to one) —
-  // it's usually an older DO someone is asking about.
+  // A search (DO no., customer / debtor name or address) narrows the DOs these filters show.
   // The page's filters, used for the cards and for the delivered count.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses, withVoid = false): Q => {
@@ -99,14 +101,12 @@ export default async function DeliveriesPage({
     if (!showOc) query = query.eq("is_oc", false);
     if (!showSupplier) query = query.eq("supplier_delivery", false);
     if (locked) query = query.or(deliveredOrSoldBy(locked));
-    if (term) query = query.ilike("do_no", `%${term}%`);
-    else {
-      if (from) query = query.gte("delivery_date", from);
-      if (to) query = query.lte("delivery_date", to);
-      // A branch sees what it delivers (and DOs handed over to it); Cross-branch switches to what it sold that another branch delivers (view only).
-      if (branch && crossOnly) query = query.eq("sales_branch", branch).neq("branch", branch);
-      else if (branch) query = query.or(`branch.eq.${branch},helper_branch.eq.${branch}`);
-    }
+    if (term) query = query.or(["do_no", "customer_name", "address", "map_address"].map((c) => `${c}.ilike.%${term}%`).join(","));
+    if (from) query = query.gte("delivery_date", from);
+    if (to) query = query.lte("delivery_date", to);
+    // A branch sees what it delivers (and DOs handed over to it); Cross-branch switches to what it sold that another branch delivers (view only).
+    if (branch && crossOnly) query = query.eq("sales_branch", branch).neq("branch", branch);
+    else if (branch) query = query.or(`branch.eq.${branch},helper_branch.eq.${branch}`);
     return query;
   };
 
@@ -167,17 +167,15 @@ export default async function DeliveriesPage({
   const dateParams = isToday ? {} : { from, to };
   const hidden = (params: Record<string, string | undefined>) =>
     Object.entries(params).map(([k, v]) => v !== undefined && <input key={k} type="hidden" name={k} value={v} />);
-  const rangeLabel = term
-    ? `DO no. matching "${term}" · all dates`
-    : isToday
+  const rangeLabel = (term ? `Matching "${term}" · ` : "") + (isToday
       ? `Today, ${fmtDate(today)}`
       : isThisWeek
         ? `This week, ${fmtDate(weekFrom)} – ${fmtDate(weekTo)}`
         : isAllDates
           ? "All dates"
-          : `${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}`;
+          : `${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}`);
   const branchLabel =
-    term && !locked ? "" : !branch ? (locked ? `${locked.join(" + ")} branches · ` : "All branches · ") : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
+    !branch ? (locked ? `${locked.join(" + ")} branches · ` : "All branches · ") : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
 
   return (
     <PendingNav>
@@ -185,10 +183,10 @@ export default async function DeliveriesPage({
       {/* Only changes to this branch's DOs refresh the page (a DO search or All branches hears every change). */}
       <RealtimeRefresh
         table="delivery_orders"
-        filter={term || !branch ? undefined : crossOnly ? `sales_branch=eq.${branch}` : `branch=eq.${branch}`}
+        filter={!branch ? undefined : crossOnly ? `sales_branch=eq.${branch}` : `branch=eq.${branch}`}
       />
       {/* …and DOs handed over to this branch (live updates take one filter each). */}
-      {!term && branch && !crossOnly && <RealtimeRefresh table="delivery_orders" filter={`helper_branch=eq.${branch}`} />}
+      {branch && !crossOnly && <RealtimeRefresh table="delivery_orders" filter={`helper_branch=eq.${branch}`} />}
       {/* A sync that changed nothing still moves "synced … ago" forward. */}
       <RealtimeRefresh table="sync_status" />
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -250,19 +248,19 @@ export default async function DeliveriesPage({
             href={href({ ...keep, xb: crossOnly ? undefined : "1", ...dateParams })}
             aria-pressed={crossOnly}
             title={`DOs ${branch} sold that another branch is delivering`}
-            className={`${TAB} border ${crossOnly ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-500 hover:text-slate-900"} ${term ? "opacity-50" : ""}`}
+            className={`${TAB} border ${crossOnly ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-500 hover:text-slate-900"}`}
           >
             Cross-branch
           </NavLink>
         )}
 
-        <div className={`flex flex-wrap items-center gap-2 ${term ? "opacity-50" : ""}`}>
+        <div className="flex flex-wrap items-center gap-2">
           <nav className="flex rounded-lg bg-slate-100 p-0.5">
-            <NavLink href={href(keep)} className={`${TAB} ${isToday && !term ? TAB_ON : TAB_OFF}`}>Today</NavLink>
-            <NavLink href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek && !term ? TAB_ON : TAB_OFF}`}>
+            <NavLink href={href(keep)} className={`${TAB} ${isToday ? TAB_ON : TAB_OFF}`}>Today</NavLink>
+            <NavLink href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek ? TAB_ON : TAB_OFF}`}>
               This week
             </NavLink>
-            <NavLink href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates && !term ? TAB_ON : TAB_OFF}`}>
+            <NavLink href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates ? TAB_ON : TAB_OFF}`}>
               All dates
             </NavLink>
           </nav>
@@ -287,9 +285,12 @@ export default async function DeliveriesPage({
 
         <NavForm className="flex w-full items-center gap-2 lg:ml-auto lg:w-auto">
           {hidden({ ...keep, ...(isToday ? {} : { from, to }) })}
-          <input name="q" defaultValue={q} placeholder="🔍 Search DO no." className="input px-2 py-1 text-xs lg:w-40" />
+          <label className="relative w-full lg:w-96">
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input name="q" type="search" defaultValue={q} placeholder="Search DO no., customer or address" aria-label="Search DO no., customer or address" className="input py-2 pl-9 pr-3 text-sm" />
+          </label>
           {q && (
-            <NavLink href={href({ ...keep, ...dateParams })} className="whitespace-nowrap text-xs text-brand-700 hover:underline">
+            <NavLink href={href({ ...keep, ...dateParams })} className="whitespace-nowrap text-sm text-brand-700 hover:underline">
               Clear
             </NavLink>
           )}

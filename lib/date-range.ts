@@ -3,6 +3,10 @@ import { addDays } from "./format";
 /** 2026-11-03 → 03/11/2026 */
 export const dmy = (iso: string) => iso.split("-").reverse().join("/");
 
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** 2026-11-03 → Tue 03/11/2026 */
+export const dayDmy = (iso: string) => `${WEEKDAY[new Date(iso + "T00:00:00Z").getUTCDay()]} ${dmy(iso)}`;
+
 /** Days of one month (month 1–12) laid out Monday-first, null = blank cell before the 1st / after the last. */
 export function monthGrid(year: number, month: number): (string | null)[] {
   const first = `${year}-${String(month).padStart(2, "0")}-01`;

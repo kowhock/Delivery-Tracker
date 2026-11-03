@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { dmy, monthGrid, monthRange, orderRange } from "./date-range";
+import { dayDmy, dmy, monthGrid, monthRange, orderRange } from "./date-range";
 
 describe("date range helpers", () => {
   it("shows day/month/year", () => {
     expect(dmy("2026-11-03")).toBe("03/11/2026");
+    expect(dayDmy("2026-11-03")).toBe("Tue 03/11/2026");
   });
   it("lays a month out Monday-first in full weeks", () => {
     const nov = monthGrid(2026, 11); // 1 Nov 2026 is a Sunday
