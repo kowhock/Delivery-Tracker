@@ -25,9 +25,9 @@ const other = { id: "x", role: "dispatcher" };
 const allowed = { id: "y", role: "dispatcher", sdo_goods: true };
 
 describe("usesSpecialOrders", () => {
-  it("is GP only for now", () => {
-    expect(usesSpecialOrders("GP")).toBe(true);
-    for (const b of ["PD", "KS", "MS", "PT", null, undefined]) expect(usesSpecialOrders(b)).toBe(false);
+  it("every branch, but a special order needs one", () => {
+    for (const b of ["GP", "PD", "KS"]) expect(usesSpecialOrders(b)).toBe(true);
+    for (const b of ["", null, undefined]) expect(usesSpecialOrders(b)).toBe(false);
   });
 });
 
@@ -42,13 +42,14 @@ describe("canEditSpecial", () => {
     expect(canEditSpecial(sdo({ special_reason: "tumpang_barang" }), admin)).toBe(true);
     expect(canEditSpecial(sdo({ special_reason: "tumpang_barang" }), creator)).toBe(false);
   });
-  it("Ambil Barang is a normal special order: creator or admin", () => {
-    expect(canEditSpecial(sdo({ special_reason: "ambil_barang" }), creator)).toBe(true);
-    expect(canEditSpecial(sdo({ special_reason: "ambil_barang" }), admin)).toBe(true);
-    expect(canEditSpecial(sdo({ special_reason: "ambil_barang" }), other)).toBe(false);
+  it("Ambil Barang / System Down: any staff, not only the creator", () => {
+    for (const reason of ["ambil_barang", "system_down"]) {
+      for (const who of [creator, admin, other, allowed]) expect(canEditSpecial(sdo({ special_reason: reason }), who)).toBe(true);
+      expect(canEditSpecial(sdo({ special_reason: reason }), { id: "d", role: "driver" })).toBe(false);
+    }
   });
   it("printed: only admins and allowed dispatchers, not the creator", () => {
-    for (const reason of ["tumpang_barang", "stock_transfer"]) {
+    for (const reason of ["tumpang_barang", "stock_transfer", "ambil_barang", "system_down"]) {
       const d = sdo({ special_reason: reason, print_count: 1 });
       expect(canEditSpecial(d, admin)).toBe(true);
       expect(canEditSpecial(d, allowed)).toBe(true);
@@ -65,13 +66,21 @@ describe("canEditSpecial", () => {
 });
 
 describe("canPrintSpecial", () => {
-  it("Kurang Hantar only, allowed people only, never when void; reprint ok", () => {
+  it("Kurang Hantar: allowed people only; never when void; reprint ok", () => {
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang" }), allowed)).toBe(true);
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang", print_count: 2 }), admin)).toBe(true);
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang" }), other)).toBe(false);
-    expect(canPrintSpecial(sdo({ special_reason: "ambil_barang" }), admin)).toBe(false);
     expect(canPrintSpecial(sdo({ special_reason: "stock_transfer" }), admin)).toBe(false);
+    expect(canPrintSpecial(sdo({ special_reason: "other" }), admin)).toBe(false);
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang", voided_at: "x" }), admin)).toBe(false);
+  });
+  it("Ambil Barang / System Down: any staff prints and reprints, never when void", () => {
+    for (const reason of ["ambil_barang", "system_down"]) {
+      expect(canPrintSpecial(sdo({ special_reason: reason }), other)).toBe(true);
+      expect(canPrintSpecial(sdo({ special_reason: reason, print_count: 1 }), creator)).toBe(true);
+      expect(canPrintSpecial(sdo({ special_reason: reason, voided_at: "x" }), admin)).toBe(false);
+      expect(canPrintSpecial(sdo({ special_reason: reason }), { id: "d", role: "driver" })).toBe(false);
+    }
   });
   it("canHandleGoods", () => {
     expect(canHandleGoods(admin)).toBe(true);

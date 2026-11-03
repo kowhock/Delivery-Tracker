@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
-import { canPrintSpecial } from "@/lib/special";
+import { PRINT_HELP, canPrintSpecial } from "@/lib/special";
 import type { DeliveryOrder } from "@/lib/types";
 import { SpecialOrderSheet, type SheetOrder } from "@/components/SpecialOrderSheet";
 
-/** Kurang Hantar SDOs (GP) print as a Delivery Order. After printing, only authorised people can edit it. */
+/** Kurang Hantar, Ambil Barang and System Down SDOs print as a Delivery Order (canPrintSpecial). After printing, only authorised people can edit it. */
 export default async function PrintSpecialOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase, user, profile } = await requireStaff();
@@ -26,7 +26,7 @@ export default async function PrintSpecialOrderPage({ params }: { params: Promis
         <p className="card p-5 text-sm text-slate-600">
           {job.voided_at
             ? `${job.do_no} is void and can't be printed.`
-            : "Only Kurang Hantar special orders can be printed, by admins and dispatchers an admin has allowed."}
+            : PRINT_HELP}
         </p>
       </div>
     );

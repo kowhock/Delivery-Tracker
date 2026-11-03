@@ -53,10 +53,10 @@ export function SpecialDoForm({
   // so editing other fields doesn't drop them.
   const shown = driversForBranch(drivers, branch, values.helper_branch);
   const kept = values.driver_id && !shown.some((d) => d.id === values.driver_id) ? drivers.find((d) => d.id === values.driver_id) : undefined;
-  // Special orders (reason, items, remark): only the branches in SPECIAL_ORDER_BRANCHES so far.
+  // Special orders (reason, items, remark): every branch in SPECIAL_ORDER_BRANCHES (all of them).
   const special = usesSpecialOrders(branch);
   const [reason, setReason] = useState(values.special_reason ?? "");
-  const withItems = isPrintReason(reason); // Kurang Hantar
+  const withItems = isPrintReason(reason); // Kurang Hantar, Ambil Barang, System Down
   const [rows, setRows] = useState<ItemRow[]>(() =>
     items.length ? items.map((i) => ({ key: nextKey++, description: i.description ?? "", uom: i.uom ?? "", qty: String(i.qty) })) : [blankRow()]
   );
@@ -120,7 +120,7 @@ export function SpecialDoForm({
         <input name="points" type="number" min={0} max={99} step={1} defaultValue={values.points ?? NEAR_POINTS} required className="input" />
       </div>
       <div className="sm:col-span-2">
-        {/* One Remark for every special DO: shown to the driver, printed on the Kurang Hantar Delivery Order. Saved in
+        {/* One Remark for every special DO: shown to the driver, printed on the Delivery Order (Kurang Hantar, Ambil Barang, System Down). Saved in
             `instructions`, which the AutoCount sync never touches (it overwrites `remarks` once linked). */}
         <label className="label">Remark</label>
         <textarea name="instructions" rows={3} defaultValue={values.instructions ?? values.remarks ?? ""} className="input" />

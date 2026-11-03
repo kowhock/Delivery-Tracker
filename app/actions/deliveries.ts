@@ -8,11 +8,11 @@ import { mapsEnabled, updateDistances } from "@/lib/geo";
 import { BRANCHES, branchFromDoNo, branchName, branchToSave, canPlan } from "@/lib/branches";
 import { TIME_SLOTS, type DoStatus, type Profile } from "@/lib/types";
 import {
-  SPECIAL_ORDER_BRANCHES,
   SPECIAL_REASONS,
   canEditSpecial,
   canHandleGoods,
   canPrintSpecial,
+  PRINT_HELP,
   isGoodsReason,
   isPrintReason,
   isRetiredReason,
@@ -116,12 +116,13 @@ async function ownSpecialDo(id: string) {
         : "Only the person who created this special DO can change it."
     );
   }
+  // (Ambil Barang / System Down are open to all staff — see canEditSpecial.)
   if (!SPECIAL_EDITABLE.includes(d.status)) throw new Error(`${d.do_no} can't be changed any more — the driver has already started or delivered it.`);
   return { ...s, d };
 }
 
 export async function updateSpecialDo(id: string, formData: FormData) {
-  const { supabase, profile, d } = await ownSpecialDo(id);
+  const { supabase, profile, user, d } = await ownSpecialDo(id);
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
   const points = Number(formData.get("points")); // special DOs: everyone sets points here (lib/access.ts)
   const driverId = get("driver_id");
@@ -133,9 +134,14 @@ export async function updateSpecialDo(id: string, formData: FormData) {
   const driverChanged = driverId !== d.driver_id;
   const branch = branchToSave(profile, get("branch"));
   if (usesSpecialOrders(branch) !== usesSpecialOrders(d.branch)) {
-    throw new Error(`Special orders can't move between ${SPECIAL_ORDER_BRANCHES.join("/")} and other branches — create a new one instead.`);
+    throw new Error("Pick a branch for this special order.");
   }
   const so = readSpecialOrder(formData, branch, profile, d.special_reason);
+  // Someone editing an open-to-all SDO (Ambil Barang / System Down) they didn't create can't switch it to a
+  // reason only its creator may edit — they'd lock themselves (and others) out of it.
+  if (so && !canEditSpecial({ ...d, special_reason: so.reason }, { ...profile, id: user.id })) {
+    throw new Error(`Only the person who created ${d.do_no} can change it to ${SPECIAL_REASONS[so.reason]}.`);
+  }
   // Only a newly picked driver must be the branch's; one it already had stays.
   if (driverId && driverChanged) await checkBranchDriver(supabase, driverId, branch, d.helper_branch);
   const newTrip = driverId && (driverChanged || date !== d.delivery_date) ? { trip_no: await nextTrip(supabase, driverId, date, id), trip_seq: 0 } : {};
@@ -201,7 +207,7 @@ export async function recordSpecialPrint(id: string): Promise<number> {
   const { data: d } = await supabase.from("delivery_orders").select(SPECIAL_COLUMNS).eq("id", id).single();
   if (!d || d.source !== "special") throw new Error("Special DO not found.");
   if (!canPrintSpecial(d, { ...profile, id: user.id })) {
-    throw new Error(d.voided_at ? `${d.do_no} is void.` : "Only Kurang Hantar special orders can be printed, by admins and dispatchers an admin has allowed.");
+    throw new Error(d.voided_at ? `${d.do_no} is void.` : PRINT_HELP);
   }
   const count = d.print_count + 1;
   const first = d.print_count === 0;

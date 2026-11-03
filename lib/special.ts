@@ -1,19 +1,24 @@
+import { BRANCHES } from "./branches";
+
 /**
  * Special order (SDO) rules: reason, items, print and void.
  *
- * Only branches in SPECIAL_ORDER_BRANCHES get them for now (GP first); other branches keep the
- * plain special DO form. To roll out to another branch, add its code here.
+ * Every branch in SPECIAL_ORDER_BRANCHES (all of them since 2026-11-03; GP first) uses them.
  *
- * - Every SDO of these branches needs a reason.
- * - Kurang Hantar (the "goods" reason) has its own items and prints as a Delivery Order; only
- *   admins and dispatchers an admin ticked on Admin access (profiles.sdo_goods) can pick it, edit or print it.
- * - Every other reason (Ambil Barang included) is a normal special order: creator or admin edits.
- * - Once printed, only admins and ticked dispatchers (canHandleGoods) can edit it; reprints are marked REPRINT.
+ * - Every SDO needs a reason.
+ * - Kurang Hantar, Ambil Barang and System Down (PRINT_REASONS) have their own items (item / UOM / qty)
+ *   and print as a Delivery Order.
+ * - Kurang Hantar (the "goods" reason): only admins and dispatchers an admin ticked on Admin access
+ *   (profiles.sdo_goods) can pick it, edit or print it.
+ * - Ambil Barang and System Down (OPEN_REASONS): any staff can open, edit and print them.
+ * - Every other reason: a normal special order — creator or admin edits, no items, no print.
+ * - Once printed, only admins and ticked dispatchers (canHandleGoods) can edit it; anyone allowed to
+ *   print can reprint (marked REPRINT).
  * - No special DO is ever deleted (any branch, any reason): an admin voids it (kept, shown as VOID).
  * The printed-edit rule and the void are also enforced in the database (guard_special_order in schema.sql).
  */
 
-export const SPECIAL_ORDER_BRANCHES = ["GP"];
+export const SPECIAL_ORDER_BRANCHES: string[] = BRANCHES.map((b) => b.code);
 
 export const SPECIAL_REASONS = {
   ambil_barang: "Ambil Barang",
@@ -39,9 +44,15 @@ export const usesSpecialOrders = (branch: string | null | undefined) => !!branch
 
 export const isGoodsReason = (r: string | null | undefined) => !!r && (GOODS_REASONS as string[]).includes(r);
 
-/** Only Kurang Hantar has item rows and prints (as a Delivery Order). */
-export const PRINT_REASONS: SpecialReason[] = ["tumpang_barang"];
+/** Have item rows and print (as a Delivery Order). */
+export const PRINT_REASONS: SpecialReason[] = ["tumpang_barang", "ambil_barang", "system_down"];
 export const isPrintReason = (r: string | null | undefined) => !!r && (PRINT_REASONS as string[]).includes(r);
+
+/** Any staff may open, edit (until printed) and print these, not only the creator. */
+export const OPEN_REASONS: SpecialReason[] = ["ambil_barang", "system_down"];
+export const isOpenReason = (r: string | null | undefined) => !!r && (OPEN_REASONS as string[]).includes(r);
+
+const isStaff = (who: { role: string }) => who.role === "admin" || who.role === "dispatcher";
 
 /** May pick a goods reason, and edit / print a goods SDO. */
 export const canHandleGoods = (p: { role: string; sdo_goods?: boolean | null }) => p.role === "admin" || !!p.sdo_goods;
@@ -49,14 +60,23 @@ export const canHandleGoods = (p: { role: string; sdo_goods?: boolean | null }) 
 type Sdo = { source: string; special_no: string | null; special_reason: string | null; created_by: string | null; print_count: number; voided_at: string | null };
 type Who = { id: string; role: string; sdo_goods?: boolean | null };
 
-/** Edit rights, ignoring delivery status (see SPECIAL_EDITABLE): goods or printed SDOs → credential; others → creator or admin. */
+/**
+ * Edit rights, ignoring delivery status (see SPECIAL_EDITABLE): goods or printed SDOs → admins + ticked
+ * dispatchers; Ambil Barang / System Down → any staff; others → creator or admin.
+ */
 export function canEditSpecial(d: Sdo, who: Who): boolean {
   if (d.source !== "special" || d.special_no || d.voided_at) return false;
   if (d.print_count > 0 || isGoodsReason(d.special_reason)) return canHandleGoods(who);
+  if (isOpenReason(d.special_reason)) return isStaff(who);
   return d.created_by === who.id || who.role === "admin";
 }
 
-export const canPrintSpecial = (d: Sdo, who: Who) => d.source === "special" && !d.voided_at && isPrintReason(d.special_reason) && canHandleGoods(who);
+export const PRINT_HELP =
+  "Only Kurang Hantar, Ambil Barang and System Down special orders print. Kurang Hantar: admins and dispatchers an admin has allowed.";
+
+/** Kurang Hantar: admins + ticked dispatchers. Ambil Barang / System Down: any staff. Never when void. */
+export const canPrintSpecial = (d: Sdo, who: Who) =>
+  d.source === "special" && !d.voided_at && isPrintReason(d.special_reason) && (isGoodsReason(d.special_reason) ? canHandleGoods(who) : isStaff(who));
 
 export type SpecialItemInput = { description: string; uom: string; qty: number };
 
