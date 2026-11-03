@@ -141,13 +141,14 @@ What the IPS AutoCount API doesn't send (asked for; the app fills them in once i
 - Failure reasons for drivers: `FAIL_REASONS` in `components/JobCard.tsx`
 - Accent colour: `--color-brand-*` in `app/globals.css`
 - Special DO numbering (`SDO-000001`): the `do_no` default in `supabase/schema.sql`
-- Special orders (reason, Tumpang Barang items and print as a Delivery Order, void) and which branches have them
+- Special orders (reason, Kurang Hantar items and print as a Delivery Order, void) and which branches have them
   (`SPECIAL_ORDER_BRANCHES`, GP for now): `lib/special.ts`. Admins pick the dispatchers allowed to
-  make / edit / print Tumpang Barang on Deliveries → Admin access. Once printed, only admins
+  make / edit / print Kurang Hantar on Deliveries → Admin access. Once printed, only admins
   and those dispatchers can edit it. No special DO (any branch) is deleted: only admins void it (kept, shown as VOID). The letterhead on the printed sheet: `COMPANY` in
   `components/SpecialOrderSheet.tsx`.
 - Who can change points: admins, plus dispatchers ticked **Edit points** on Deliveries → Admin access
-  (`lib/access.ts`, enforced in the database by `guard_points`). "Calculate missing points" stays open to all staff.
+  (`lib/access.ts`, enforced in the database by `guard_points`). "Calculate missing points" stays open to all staff,
+  and anyone who can make / edit a special DO sets its points on the special DO form.
 
 ## Development
 

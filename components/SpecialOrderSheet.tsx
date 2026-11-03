@@ -43,7 +43,7 @@ const dmy = (d: string) => new Date(d.length === 10 ? d + "T00:00:00+08:00" : d)
 const dmyTime = (d: string) => new Date(d).toLocaleString("en-GB", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
- * The Tumpang Barang sheet, printed as a Delivery Order like the company's Delivery Order. Print records the print
+ * The Kurang Hantar sheet, printed as a Delivery Order like the company's Delivery Order. Print records the print
  * first (after that only authorised people can edit it), then opens the browser's print dialog. Copies after the
  * first say REPRINT.
  */

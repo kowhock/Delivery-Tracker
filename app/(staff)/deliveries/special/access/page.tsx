@@ -16,11 +16,11 @@ export default async function AdminAccessPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Admin access</h1>
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-500">
           <li>
-            <b>Special order</b>: create, edit and print Tumpang Barang special orders ({SPECIAL_ORDER_BRANCHES.join(", ")} branch),
+            <b>Special order</b>: create, edit and print Kurang Hantar special orders ({SPECIAL_ORDER_BRANCHES.join(", ")} branch),
             and edit special orders once printed.
           </li>
           <li>
-            <b>Edit points</b>: change a DO&apos;s points on Driver status, the trip form and the special DO form.
+            <b>Edit points</b>: change a DO&apos;s points on Driver status and the trip form. Anyone can set points on the special DO form.
             Anyone can still run &quot;Calculate missing points&quot;.
           </li>
           <li>Admins can always do both. Only admins can void.</li>

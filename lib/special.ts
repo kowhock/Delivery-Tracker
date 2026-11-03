@@ -5,7 +5,7 @@
  * plain special DO form. To roll out to another branch, add its code here.
  *
  * - Every SDO of these branches needs a reason.
- * - Tumpang Barang (the "goods" reason) has its own items and prints as a Delivery Order; only
+ * - Kurang Hantar (the "goods" reason) has its own items and prints as a Delivery Order; only
  *   admins and dispatchers an admin ticked on Admin access (profiles.sdo_goods) can pick it, edit or print it.
  * - Every other reason (Ambil Barang included) is a normal special order: creator or admin edits.
  * - Once printed, only admins and ticked dispatchers (canHandleGoods) can edit it; reprints are marked REPRINT.
@@ -17,13 +17,18 @@ export const SPECIAL_ORDER_BRANCHES = ["GP"];
 
 export const SPECIAL_REASONS = {
   ambil_barang: "Ambil Barang",
-  tumpang_barang: "Tumpang Barang",
+  tumpang_barang: "Kurang Hantar",
   stock_transfer: "Stock Transfer",
-  ambil_give_do: "Ambil DO / Give DO",
+  system_down: "System Down",
   other: "Other",
+  ambil_give_do: "Ambil DO / Give DO", // retired 2026-11-02 (see RETIRED_REASONS)
 } as const;
 
 export type SpecialReason = keyof typeof SPECIAL_REASONS;
+
+/** No longer offered for new or changed SDOs; kept so older SDOs still show their reason. */
+export const RETIRED_REASONS: SpecialReason[] = ["ambil_give_do"];
+export const isRetiredReason = (r: string | null | undefined) => !!r && (RETIRED_REASONS as string[]).includes(r);
 
 export const GOODS_REASONS: SpecialReason[] = ["tumpang_barang"];
 
@@ -34,7 +39,7 @@ export const usesSpecialOrders = (branch: string | null | undefined) => !!branch
 
 export const isGoodsReason = (r: string | null | undefined) => !!r && (GOODS_REASONS as string[]).includes(r);
 
-/** Only Tumpang Barang has item rows and prints (as a Delivery Order). */
+/** Only Kurang Hantar has item rows and prints (as a Delivery Order). */
 export const PRINT_REASONS: SpecialReason[] = ["tumpang_barang"];
 export const isPrintReason = (r: string | null | undefined) => !!r && (PRINT_REASONS as string[]).includes(r);
 

@@ -5,7 +5,7 @@ import { useState, type KeyboardEvent } from "react";
 import { BRANCHES, driversForBranch } from "@/lib/branches";
 import { NEAR_POINTS } from "@/lib/commission";
 import { driverLabel } from "@/lib/format";
-import { GOODS_REASONS, SPECIAL_REASONS, isPrintReason, usesSpecialOrders, type SpecialReason } from "@/lib/special";
+import { GOODS_REASONS, RETIRED_REASONS, SPECIAL_REASONS, isPrintReason, usesSpecialOrders, type SpecialReason } from "@/lib/special";
 import type { DeliveryOrder, DoItem, Profile } from "@/lib/types";
 
 type Values = Pick<DeliveryOrder, "customer_name" | "address" | "contact_phone" | "delivery_date" | "branch" | "driver_id" | "points" | "instructions"> &
@@ -34,7 +34,6 @@ export function SpecialDoForm({
   values,
   submitLabel,
   canGoods = false,
-  canPoints = false,
   items = [],
 }: {
   action: (formData: FormData) => Promise<void>;
@@ -43,10 +42,8 @@ export function SpecialDoForm({
   lockedTo: string[] | null;
   values: Values;
   submitLabel: string;
-  /** Admin, or a dispatcher an admin allowed: may pick Tumpang Barang (lib/special.ts). */
+  /** Admin, or a dispatcher an admin allowed: may pick Kurang Hantar (lib/special.ts). */
   canGoods?: boolean;
-  /** Admin, or a dispatcher an admin allowed: may set the points (lib/access.ts). Others get the default. */
-  canPoints?: boolean;
   /** Edit page: the special order's items so far. */
   items?: Pick<DoItem, "description" | "uom" | "qty">[];
 }) {
@@ -59,13 +56,13 @@ export function SpecialDoForm({
   // Special orders (reason, items, remark): only the branches in SPECIAL_ORDER_BRANCHES so far.
   const special = usesSpecialOrders(branch);
   const [reason, setReason] = useState(values.special_reason ?? "");
-  const withItems = isPrintReason(reason); // Tumpang Barang
+  const withItems = isPrintReason(reason); // Kurang Hantar
   const [rows, setRows] = useState<ItemRow[]>(() =>
     items.length ? items.map((i) => ({ key: nextKey++, description: i.description ?? "", uom: i.uom ?? "", qty: String(i.qty) })) : [blankRow()]
   );
   const setRow = (key: number, patch: Partial<ItemRow>) => setRows((all) => all.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  // Goods reasons are only offered to people allowed to use them (and kept if the SDO already has one).
-  const reasons = (Object.keys(SPECIAL_REASONS) as SpecialReason[]).filter((r) => canGoods || !GOODS_REASONS.includes(r) || r === values.special_reason);
+  // Goods reasons only for people allowed to use them; retired reasons never — except the one the SDO already has.
+  const reasons = (Object.keys(SPECIAL_REASONS) as SpecialReason[]).filter((r) => r === values.special_reason || ((canGoods || !GOODS_REASONS.includes(r)) && !RETIRED_REASONS.includes(r)));
 
   return (
     <form action={action} onKeyDown={enterToNext} className="card grid gap-4 p-5 sm:grid-cols-2">
@@ -117,19 +114,13 @@ export function SpecialDoForm({
           {shown.map((d) => <option key={d.id} value={d.id}>{driverLabel(d)}</option>)}
         </select>
       </div>
-      {canPoints ? (
-        <div>
-          <label className="label">Points for the driver</label>
-          <input name="points" type="number" min={0} max={99} step={1} defaultValue={values.points ?? NEAR_POINTS} required className="input" />
-        </div>
-      ) : (
-        <div>
-          <span className="label">Points for the driver</span>
-          <p className="py-2 text-sm text-slate-600">{values.points ?? NEAR_POINTS} pts · set by an admin or allowed staff</p>
-        </div>
-      )}
+      {/* Anyone who can make / edit the special DO sets its points here (Edit points access is for Driver status). */}
+      <div>
+        <label className="label">Points for the driver</label>
+        <input name="points" type="number" min={0} max={99} step={1} defaultValue={values.points ?? NEAR_POINTS} required className="input" />
+      </div>
       <div className="sm:col-span-2">
-        {/* One Remark for every special DO: shown to the driver, printed on the Tumpang Barang Delivery Order. Saved in
+        {/* One Remark for every special DO: shown to the driver, printed on the Kurang Hantar Delivery Order. Saved in
             `instructions`, which the AutoCount sync never touches (it overwrites `remarks` once linked). */}
         <label className="label">Remark</label>
         <textarea name="instructions" rows={3} defaultValue={values.instructions ?? values.remarks ?? ""} className="input" />

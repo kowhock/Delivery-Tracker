@@ -1,9 +1,10 @@
 /**
  * Staff permissions an admin ticks per dispatcher on Deliveries → Admin access. Admins always have them.
- * - sdo_goods:   Tumpang Barang special orders (see canHandleGoods in lib/special.ts)
- * - points_edit: change a DO's points — key them in, back to the distance rule, the address used
- *                for points, points on the trip form and the special DO form. "Calculate missing
- *                points" (the distance rule only) stays open to all staff.
+ * - sdo_goods:   Kurang Hantar special orders (see canHandleGoods in lib/special.ts)
+ * - points_edit: change a DO's points on Driver status (key in, back to the distance rule, the address
+ *                used for points) and on the trip form. Special DOs are the exception: whoever can
+ *                make / edit one sets its points on the special DO form. "Calculate missing points"
+ *                (the distance rule only) stays open to all staff.
  * Also enforced in the database (guard_points in schema.sql).
  */
 export const STAFF_ACCESS = {

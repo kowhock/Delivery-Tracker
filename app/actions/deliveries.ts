@@ -15,6 +15,7 @@ import {
   canPrintSpecial,
   isGoodsReason,
   isPrintReason,
+  isRetiredReason,
   isSpecialReason,
   parseSpecialItems,
   usesSpecialOrders,
@@ -23,7 +24,6 @@ import {
 } from "@/lib/special";
 import { checkBranchDriver, nextTrip, notYourBranch } from "./_shared";
 import { NO_POINTS_ACCESS, canEditPoints, isStaffAccess, type StaffAccess } from "@/lib/access";
-import { NEAR_POINTS } from "@/lib/commission";
 
 // ---------- Delivery orders (staff) ----------------------------------
 
@@ -31,10 +31,11 @@ import { NEAR_POINTS } from "@/lib/commission";
  * Special-order fields (reason, goods items, remark) for branches that use them (lib/special.ts);
  * null for other branches, which keep the plain special DO.
  */
-function readSpecialOrder(formData: FormData, branch: string | null, who: Profile) {
+function readSpecialOrder(formData: FormData, branch: string | null, who: Profile, current: string | null = null) {
   if (!usesSpecialOrders(branch)) return null;
   const reason = String(formData.get("special_reason") ?? "");
   if (!isSpecialReason(reason)) throw new Error("Pick the reason for this special order.");
+  if (isRetiredReason(reason) && reason !== current) throw new Error(`"${SPECIAL_REASONS[reason]}" is no longer used — pick another reason.`);
   const goods = isGoodsReason(reason);
   if (goods && !canHandleGoods(who)) throw new Error(`Only admins and dispatchers an admin has allowed can make ${SPECIAL_REASONS[reason]} special orders.`);
   const withItems = isPrintReason(reason);
@@ -56,8 +57,7 @@ async function saveSpecialItems(supabase: Awaited<ReturnType<typeof requireStaff
 export async function createSpecialDo(formData: FormData) {
   const { supabase, profile } = await requireStaff();
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
-  // Without points access the form has no Points box: the default, adjusted later by someone allowed.
-  const points = canEditPoints(profile) ? Number(formData.get("points")) : NEAR_POINTS;
+  const points = Number(formData.get("points")); // special DOs: everyone sets points here (lib/access.ts)
   const driverId = get("driver_id");
   const date = get("delivery_date") ?? todayMY();
   if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
@@ -123,8 +123,7 @@ async function ownSpecialDo(id: string) {
 export async function updateSpecialDo(id: string, formData: FormData) {
   const { supabase, profile, d } = await ownSpecialDo(id);
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
-  const pointsAccess = canEditPoints(profile); // without it, the points stay as they are
-  const points = pointsAccess ? Number(formData.get("points")) : 0;
+  const points = Number(formData.get("points")); // special DOs: everyone sets points here (lib/access.ts)
   const driverId = get("driver_id");
   const date = get("delivery_date") ?? todayMY();
   if (!get("customer_name")) throw new Error("Enter who it's delivered to.");
@@ -136,7 +135,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
   if (usesSpecialOrders(branch) !== usesSpecialOrders(d.branch)) {
     throw new Error(`Special orders can't move between ${SPECIAL_ORDER_BRANCHES.join("/")} and other branches — create a new one instead.`);
   }
-  const so = readSpecialOrder(formData, branch, profile);
+  const so = readSpecialOrder(formData, branch, profile, d.special_reason);
   // Only a newly picked driver must be the branch's; one it already had stays.
   if (driverId && driverChanged) await checkBranchDriver(supabase, driverId, branch, d.helper_branch);
   const newTrip = driverId && (driverChanged || date !== d.delivery_date) ? { trip_no: await nextTrip(supabase, driverId, date, id), trip_seq: 0 } : {};
@@ -155,7 +154,8 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       // saved in `remarks` by an earlier version was shown in the same box, so it moves over.
       instructions: get("instructions"),
       remarks: null,
-      ...(pointsAccess ? { points, points_manual: true } : {}),
+      points,
+      points_manual: true,
       ...(so ? { special_reason: so.reason } : {}),
     })
     .eq("id", id);
@@ -193,7 +193,7 @@ export async function voidSpecialDo(id: string, reason: string) {
 }
 
 /**
- * Called when a Tumpang Barang SDO is printed (as a Delivery Order). After the first print only admins and allowed
+ * Called when a Kurang Hantar SDO is printed (as a Delivery Order). After the first print only admins and allowed
  * dispatchers can edit it (here and in the database); later prints are marked REPRINT. Returns the new print count.
  */
 export async function recordSpecialPrint(id: string): Promise<number> {
@@ -201,7 +201,7 @@ export async function recordSpecialPrint(id: string): Promise<number> {
   const { data: d } = await supabase.from("delivery_orders").select(SPECIAL_COLUMNS).eq("id", id).single();
   if (!d || d.source !== "special") throw new Error("Special DO not found.");
   if (!canPrintSpecial(d, { ...profile, id: user.id })) {
-    throw new Error(d.voided_at ? `${d.do_no} is void.` : "Only Tumpang Barang special orders can be printed, by admins and dispatchers an admin has allowed.");
+    throw new Error(d.voided_at ? `${d.do_no} is void.` : "Only Kurang Hantar special orders can be printed, by admins and dispatchers an admin has allowed.");
   }
   const count = d.print_count + 1;
   const first = d.print_count === 0;

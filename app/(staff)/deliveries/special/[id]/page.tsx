@@ -7,12 +7,11 @@ import { updateSpecialDo } from "@/app/actions";
 import { SpecialDoForm } from "@/components/SpecialDoForm";
 import { VoidSpecialDo } from "@/components/VoidSpecialDo";
 import { canEditSpecial, canHandleGoods, canPrintSpecial, isGoodsReason, usesSpecialOrders } from "@/lib/special";
-import { canEditPoints } from "@/lib/access";
 import type { DeliveryOrder, Profile } from "@/lib/types";
 
 /**
  * Edit a special DO before the driver starts it. Who may: see canEditSpecial (lib/special.ts).
- * Tumpang Barang orders also print from here. Every special DO is voided here by an admin, never deleted.
+ * Kurang Hantar orders also print from here. Every special DO is voided here by an admin, never deleted.
  */
 export default async function EditSpecialDoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -61,7 +60,7 @@ export default async function EditSpecialDoPage({ params }: { params: Promise<{ 
           {job.print_count > 0
             ? `This special order was printed${job.printed_at ? ` on ${fmtDateTime(job.printed_at)}` : ""}. Only admins and dispatchers an admin has allowed can edit it now.`
             : goods
-            ? "Only admins and dispatchers an admin has allowed can edit Tumpang Barang special orders."
+            ? "Only admins and dispatchers an admin has allowed can edit Kurang Hantar special orders."
             : "Only the person who created this special DO can edit it."}
         </p>
       ) : !editable ? (
@@ -76,7 +75,6 @@ export default async function EditSpecialDoPage({ params }: { params: Promise<{ 
           submitLabel="Save changes"
           values={job}
           canGoods={canHandleGoods(profile)}
-          canPoints={canEditPoints(profile)}
           items={job.do_items ?? []}
         />
       )}

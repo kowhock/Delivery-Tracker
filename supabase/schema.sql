@@ -21,7 +21,7 @@ create table public.profiles (
   role       public.user_role not null default 'driver',
   branch     text,                           -- GP, PD, …; pages open on this branch first
   lorry_no   text,                           -- number on the driver's lorry, e.g. "93"
-  sdo_goods  boolean not null default false,  -- dispatcher an admin allowed to make/edit/print Tumpang Barang special orders (and edit printed ones)
+  sdo_goods  boolean not null default false,  -- dispatcher an admin allowed to make/edit/print Kurang Hantar special orders (and edit printed ones)
   points_edit boolean not null default false, -- dispatcher an admin allowed to change points (guard_points)
   created_at timestamptz not null default now()
 );
@@ -186,7 +186,7 @@ create table public.delivery_orders (
   created_by     uuid default auth.uid() references public.profiles on delete set null,
   created_at     timestamptz not null default now(),
   -- Special orders (GP first, see lib/special.ts): why it was keyed in; printed/void state.
-  special_reason text check (special_reason in ('ambil_barang', 'tumpang_barang', 'stock_transfer', 'ambil_give_do', 'other')),
+  special_reason text check (special_reason in ('ambil_barang', 'tumpang_barang', 'stock_transfer', 'system_down', 'other', 'ambil_give_do')),
   print_count    int not null default 0,       -- times printed; > 0 = only admins / sdo_goods edit (guard_special_order)
   printed_at     timestamptz,                  -- first print
   printed_by     uuid references public.profiles on delete set null,
@@ -422,7 +422,8 @@ create trigger guard_delivery_order
 
 -- Only admins and dispatchers an admin ticked (profiles.points_edit) change points by hand: keyed-in
 -- points, back to the distance rule, or the address used for points (map_address). The distance
--- rule itself (points_manual stays false) and server syncs (no user) are not affected. lib/access.ts.
+-- rule itself (points_manual stays false) and server syncs (no user) are not affected. Special DOs
+-- are exempt: anyone who can edit one sets its points on the special DO form. lib/access.ts.
 create or replace function public.can_edit_points() returns boolean
 language sql stable security definer set search_path = '' as $$
   select auth.uid() is null or coalesce(
@@ -432,7 +433,7 @@ $$;
 create or replace function public.guard_points() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if public.is_staff() and not public.can_edit_points() and (
+  if public.is_staff() and not public.can_edit_points() and old.source <> 'special' and (
        new.map_address is distinct from old.map_address
     or (old.points_manual and not new.points_manual)
     or (new.points_manual and (new.points is distinct from old.points or not old.points_manual))

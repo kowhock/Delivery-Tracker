@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { canEditSpecial, canHandleGoods, canPrintSpecial, parseSpecialItems, usesSpecialOrders } from "./special";
+import {
+  RETIRED_REASONS,
+  SPECIAL_REASONS,
+  canEditSpecial,
+  canHandleGoods,
+  canPrintSpecial,
+  isRetiredReason,
+  parseSpecialItems,
+  usesSpecialOrders,
+} from "./special";
 
 const sdo = (o: Partial<Parameters<typeof canEditSpecial>[0]> = {}) => ({
   source: "special",
@@ -28,7 +37,7 @@ describe("canEditSpecial", () => {
     expect(canEditSpecial(sdo(), admin)).toBe(true);
     expect(canEditSpecial(sdo(), other)).toBe(false);
   });
-  it("Tumpang Barang: only allowed dispatchers and admins, even if someone else created it", () => {
+  it("Kurang Hantar: only allowed dispatchers and admins, even if someone else created it", () => {
     expect(canEditSpecial(sdo({ special_reason: "tumpang_barang" }), allowed)).toBe(true);
     expect(canEditSpecial(sdo({ special_reason: "tumpang_barang" }), admin)).toBe(true);
     expect(canEditSpecial(sdo({ special_reason: "tumpang_barang" }), creator)).toBe(false);
@@ -56,7 +65,7 @@ describe("canEditSpecial", () => {
 });
 
 describe("canPrintSpecial", () => {
-  it("Tumpang Barang only, allowed people only, never when void; reprint ok", () => {
+  it("Kurang Hantar only, allowed people only, never when void; reprint ok", () => {
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang" }), allowed)).toBe(true);
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang", print_count: 2 }), admin)).toBe(true);
     expect(canPrintSpecial(sdo({ special_reason: "tumpang_barang" }), other)).toBe(false);
@@ -93,5 +102,14 @@ describe("parseSpecialItems", () => {
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "0"]]))).toThrow(/quantity/);
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "1.5"]]))).toThrow(/quantity/);
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "-2"]]))).toThrow(/quantity/);
+  });
+});
+
+describe("reasons", () => {
+  it("System Down is offered; Ambil DO / Give DO is retired but still has its label", () => {
+    expect(SPECIAL_REASONS.system_down).toBe("System Down");
+    expect(isRetiredReason("ambil_give_do")).toBe(true);
+    expect(isRetiredReason("system_down")).toBe(false);
+    expect(SPECIAL_REASONS[RETIRED_REASONS[0]]).toBe("Ambil DO / Give DO");
   });
 });
