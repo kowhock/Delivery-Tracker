@@ -232,8 +232,15 @@ export function DriverTrips({
   const found = searching ? jobs.filter(matches).length : 0;
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="relative w-full sm:w-96">
+      {/* Search on the right; what it found (and Clear) just before it. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {searching && (
+          <span className="text-sm text-slate-500">
+            {found ? `${found} DO${found > 1 ? "s" : ""} found` : "No DOs match"}
+            <button type="button" onClick={() => setSearch("")} className="ml-3 text-brand-700 hover:underline">Clear</button>
+          </span>
+        )}
+        <label className="relative w-full sm:w-80">
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <input
             type="search"
@@ -244,12 +251,6 @@ export function DriverTrips({
             className="input py-2 pl-9 pr-3 text-sm"
           />
         </label>
-        {searching && (
-          <span className="text-sm text-slate-500">
-            {found ? `${found} DO${found > 1 ? "s" : ""} found` : "No DOs match"}
-            <button type="button" onClick={() => setSearch("")} className="ml-3 text-brand-700 hover:underline">Clear</button>
-          </span>
-        )}
       </div>
       {error && <p className="rounded-xl bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>}
       {pending && <p className="text-xs text-slate-400">Saving…</p>}

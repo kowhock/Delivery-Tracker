@@ -285,9 +285,9 @@ export default async function DeliveriesPage({
 
         <NavForm className="flex w-full items-center gap-2 lg:ml-auto lg:w-auto">
           {hidden({ ...keep, ...(isToday ? {} : { from, to }) })}
-          <label className="relative w-full lg:w-96">
+          <label className="relative w-full lg:w-72">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input name="q" type="search" defaultValue={q} placeholder="Search DO no., customer or address" aria-label="Search DO no., customer or address" className="input py-2 pl-9 pr-3 text-sm" />
+            <input name="q" type="search" defaultValue={q} placeholder="DO no., customer or address" aria-label="Search DO no., customer or address" className="input py-2 pl-9 pr-3 text-sm" />
           </label>
           {q && (
             <NavLink href={href({ ...keep, ...dateParams })} className="whitespace-nowrap text-sm text-brand-700 hover:underline">

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { canEditPoints } from "@/lib/access";
 import { lockedBranches, pageBranch, userBranches } from "@/lib/branches";
@@ -22,7 +23,8 @@ export default async function DriversPage({
   const sp = await searchParams;
   const { supabase, profile } = await requireStaff();
 
-  const from = sp.from || todayMY();
+  const today = todayMY();
+  const from = sp.from || today;
   const to = sp.to && sp.to >= from ? sp.to : from;
   const dates = dateRange(from, to, MAX_DAYS);
 
@@ -100,7 +102,15 @@ export default async function DriversPage({
               ))}
             </select>
           )}
-          <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={todayMY()} max={MAX_DAYS} />
+          {/* Quick jump back to today (keeps the branch picked). */}
+          <Link
+            href={`/drivers?${new URLSearchParams({ ...(sp.branch ? { branch: sp.branch } : {}), from: today, to: today })}`}
+            aria-current={from === today && to === today ? "date" : undefined}
+            className={`text-sm font-medium ${from === today && to === today ? "text-slate-900" : "text-brand-700 hover:underline"}`}
+          >
+            Today
+          </Link>
+          <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={today} max={MAX_DAYS} />
           <button className="btn-secondary">Go</button>
         </form>
       </div>
