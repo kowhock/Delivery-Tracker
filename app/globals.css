@@ -41,6 +41,21 @@
   @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition
     placeholder:text-slate-400 focus:border-brand-600 focus:ring-4 focus:ring-brand-100;
 }
+/*
+ * Dropdowns: the browser's arrow sits on the box's edge, so draw our own chevron inset from the
+ * right, with room kept for it. Unlayered so it wins over px-* utilities. Sized in em, so it scales
+ * with text-xs / text-sm boxes. Dropdowns that draw their own arrow use appearance-none and are skipped.
+ */
+select:not([multiple]):not([size]):not(.appearance-none) {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%2364748b'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z' clip-rule='evenodd'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7em center;
+  background-size: 1.15em;
+  padding-right: 2.3em;
+}
+select:not([multiple]):not([size]):not(.appearance-none):disabled { opacity: 0.6 }
+
 @utility label {
   @apply mb-1.5 block text-xs font-medium text-slate-500;
 }

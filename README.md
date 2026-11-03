@@ -14,7 +14,7 @@ Built with Next.js, Supabase and Tailwind.
 | `/deliveries` | office | Board of DOs by status (today by default), assign drivers, updates live |
 | `/drivers` | office | Driver status: each driver's orders from date to date, split into trips; drag orders to plan trips. Opens on your own branch's drivers; switch branch with the dropdown |
 | `/lorries` | office | Each lorry's driver and what it's doing today; change driver (asks first if the lorry or driver is taken), book maintenance, history |
-| `/trip-form` | office | A driver's daily (one day) or monthly (date range) trip form with points and commission; PDF via print, or Excel. A DO the driver didn't mark in the app can be typed into an empty box and saved to that day |
+| `/trip-form` | office | A driver's daily (one day) or monthly (date range) trip form with points and commission; PDF via print, or Excel. A DO the driver didn't mark in the app can be typed into an empty box and saved to that day. What the office types (monthly Remarks such as OFF / MC, daily Lorry checking and Trip) saves as you leave each box (`trip_form_notes`), so it's kept day by day until month end |
 | `/outstanding` | office | Notes on DOs that still need something done (CN, edit DO, …), until cleared |
 | `/orders` | admins | SO list with search, status and date filters (SOs aren't synced from the API yet — see below) |
 | `/orders/[id]` | admins | SO detail with AutoCount fields, its DOs (one SO can have many), POD photos, timeline |

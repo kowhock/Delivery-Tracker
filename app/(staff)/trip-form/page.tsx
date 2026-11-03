@@ -9,6 +9,7 @@ import { commissionForDay, withTripPoints } from "@/lib/commission";
 import { lorryLabel, type Lorry, type Profile } from "@/lib/types";
 import { TripForm, type TripDay } from "@/components/TripForm";
 import { BranchDriverPicker } from "@/components/BranchDriverPicker";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { fromTripForm } from "@/app/actions";
 
 const MAX_DAYS = 31; // the monthly form has 31 rows
@@ -37,7 +38,17 @@ export default async function TripFormPage({
 
   let days: TripDay[] = [];
   let lorry = "";
+  const savedNotes: Record<string, Record<string, string>> = {};
   if (driver) {
+    // What the office typed on the form and saved (saveTripNote): Remarks, lorry checks, trips.
+    const { data: noteRows } = await supabase
+      .from("trip_form_notes")
+      .select("date, field, value")
+      .eq("driver_id", driver.id)
+      .gte("date", dates[0])
+      .lte("date", dates[dates.length - 1]);
+    for (const n of noteRows ?? []) (savedNotes[n.date] ??= {})[n.field] = n.value;
+
     // Commission counts what was delivered on each day (delivered_at), like Driver status,
     // and every failed attempt on the day it failed (with a "Failed" remark).
     const dayStart = `${dates[0]}T00:00:00+08:00`;
@@ -116,12 +127,7 @@ export default async function TripFormPage({
           ) : (
             <BranchDriverPicker drivers={drivers} driverId={driver?.id} />
           )}
-          <label className="flex items-center gap-1.5 text-sm text-slate-500">
-            From <input type="date" name="from" defaultValue={from} className="input w-auto" />
-          </label>
-          <label className="flex items-center gap-1.5 text-sm text-slate-500">
-            To <input type="date" name="to" defaultValue={to} className="input w-auto" />
-          </label>
+          <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={today} max={MAX_DAYS} />
           <button className="btn-secondary">Go</button>
           <Link href={params({ from: today, to: today })} className="btn-secondary">
             Today
@@ -145,6 +151,7 @@ export default async function TripFormPage({
           days={days}
           driverId={driver.id}
           canEditPoints={canEditPoints(profile)}
+          savedNotes={savedNotes}
         />
       )}
     </div>

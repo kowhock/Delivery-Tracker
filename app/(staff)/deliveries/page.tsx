@@ -8,6 +8,7 @@ import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { SyncAge } from "@/components/SyncAge";
 import { BranchTags } from "@/components/DocLinks";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { DoDate, DoTimeSlot } from "@/components/MoveDate";
 import { DoOutstanding } from "@/components/Outstanding";
 import { OcCollect } from "@/components/OcCollect";
@@ -279,9 +280,7 @@ export default async function DeliveriesPage({
                 ))}
               </select>
             )}
-            <input type="date" name="from" defaultValue={from} aria-label="From" className="input w-auto px-2 py-1 text-xs" />
-            <span className="text-slate-400">–</span>
-            <input type="date" name="to" defaultValue={to} aria-label="To" className="input w-auto px-2 py-1 text-xs" />
+            <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={today} small align="left" />
             <button className="btn-secondary px-2.5 py-1 text-xs">Go</button>
           </NavForm>
         </div>

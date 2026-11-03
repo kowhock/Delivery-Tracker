@@ -275,6 +275,18 @@ create table public.delivery_attempts (
 create index delivery_attempts_driver_idx on public.delivery_attempts (driver_id, failed_at);
 create index delivery_attempts_do_idx on public.delivery_attempts (do_id);
 
+-- ---------- Trip form: what the office types ------------------------
+-- Monthly Remarks (OFF, MC, …), daily Lorry checking and Trip boxes, per driver per day (lib/trip-form.ts).
+create table public.trip_form_notes (
+  driver_id  uuid not null references public.profiles on delete cascade,
+  date       date not null,
+  field      text not null check (length(field) between 1 and 40), -- remark | trips | check:<lorry check> (lib/trip-form.ts)
+  value      text not null check (length(value) between 1 and 60),
+  updated_by uuid default auth.uid() references public.profiles on delete set null,
+  updated_at timestamptz not null default now(),
+  primary key (driver_id, date, field)
+);
+
 -- ---------- AutoCount sync: when it last ran ---------------------------
 -- The office computer's sync writes here after each run, so the Deliveries page
 -- can show "AutoCount synced 2 min ago".
@@ -547,6 +559,7 @@ alter table public.lorries         enable row level security;
 alter table public.lorry_events    enable row level security;
 alter table public.delivery_attempts enable row level security;
 alter table public.sync_status     enable row level security;
+alter table public.trip_form_notes   enable row level security;
 
 -- Profiles: see yourself; staff see everyone; admins edit roles.
 create policy "read own or staff"   on public.profiles for select using (id = (select auth.uid()) or (select public.is_staff()));
@@ -565,6 +578,7 @@ create policy "staff all" on public.lorries         for all using ((select publi
 create policy "staff all" on public.lorry_events    for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.delivery_attempts for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.sync_status     for all using ((select public.is_staff())) with check ((select public.is_staff()));
+create policy "staff all" on public.trip_form_notes   for all using ((select public.is_staff())) with check ((select public.is_staff()));
 
 -- Drivers: only their own delivery jobs.
 create policy "driver reads own DOs" on public.delivery_orders

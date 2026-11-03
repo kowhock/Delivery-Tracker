@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import type { Workbook, Worksheet } from "exceljs";
-import { recordTripFormDo, undoTripFormDo } from "@/app/actions";
+import { recordTripFormDo, saveTripNote, undoTripFormDo } from "@/app/actions";
+import { LORRY_CHECKS as CHECKS, NOTE_MAX, checkField } from "@/lib/trip-form";
 
 // Printed at the top of the monthly trip form.
 const COMPANY_ZH = "高福五金建築材料 (馬) 有限公司";
@@ -12,7 +13,6 @@ const COMPANY_EN = "KOW HOCK BUILDING MATERIALS (M) SDN BHD (733832-T)";
 const ROWS = 31; // monthly form rows
 const BOXES = 12; // DO boxes on one daily form page (2 columns × 6)
 const SIGNATURES = ["PREPARED BY", "BRANCH MANAGER", "CONFIRM BY", "APPROVED BY"];
-const CHECKS = ["HYDRAULIC OIL", "ENGINE OIL", "WATER LEVEL", "TYRE"];
 
 export type TripDo = { id: string; doNo: string; location: string; timeIn: string; timeBack: string; points: number | null; manual: boolean;
   /** AutoCount address, set only when the office changed the delivery address used for points (`location` is the new one). */
@@ -24,9 +24,18 @@ export type TripDo = { id: string; doNo: string; location: string; timeIn: strin
 export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
 
 /** canEditPoints: may type points for a DO added on the form (lib/access.ts); without it the box stays blank. */
-type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[]; canEditPoints: boolean };
-/** What the office typed into the daily form's blank boxes (lorry checks, empty DO boxes…), by box key. */
-type Filled = { filled: Record<string, string>; setFilled: (f: (r: Record<string, string>) => Record<string, string>) => void };
+/** savedNotes: what the office typed and saved so far, by date then box (trip_form_notes, lib/trip-form.ts). */
+type Props = { driver: string; driverId: string; branch: string; lorry: string; from: string; to: string; days: TripDay[]; canEditPoints: boolean; savedNotes: Record<string, Record<string, string>> };
+type Remarks = Record<string, string>;
+type SetText = (f: (r: Record<string, string>) => Record<string, string>) => void;
+/** Monthly Remarks by date: what's in each box, and what's saved. */
+type RemarkState = { remarks: Remarks; setRemarks: SetText; saved: Remarks; setSaved: SetText };
+/**
+ * What the office typed into the daily form's blank boxes, by box key. Lorry checks and Trip save
+ * themselves (`daySaved`, keys = lib/trip-form.ts fields); typed DO boxes save with their Save button.
+ */
+type Filled = { filled: Record<string, string>; setFilled: SetText };
+type DaySaved = { daySaved: Record<string, string>; setDaySaved: SetText };
 
 /** 2026-06-29 → 29.06.2026 (or 29/06/2026 with sep "/"). */
 const dotted = (iso: string, sep = ".") => iso.split("-").reverse().join(sep);
@@ -45,8 +54,22 @@ function pages(dos: TripDo[]): (TripDo | undefined)[][][] {
 
 export function TripForm(props: Props) {
   const daily = props.from === props.to;
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
-  const [filled, setFilled] = useState<Record<string, string>>({});
+  // Monthly: each day's saved Remark. Daily: that day's saved lorry checks / trips.
+  const initialRemarks = () => Object.fromEntries(Object.entries(props.savedNotes).flatMap(([d, n]) => (n.remark ? [[d, n.remark]] : [])));
+  const [remarks, setRemarks] = useState<Remarks>(initialRemarks);
+  const [saved, setSaved] = useState<Remarks>(initialRemarks);
+  const [filled, setFilled] = useState<Record<string, string>>(() => ({ ...props.savedNotes[props.from] }));
+  const [daySaved, setDaySaved] = useState<Record<string, string>>(() => ({ ...props.savedNotes[props.from] }));
+  const unsaved = daily
+    ? DAY_FIELDS.filter((k) => (filled[k] ?? "").trim() !== (daySaved[k] ?? "")).length
+    : props.days.filter((x) => (remarks[x.date] ?? "").trim() !== (saved[x.date] ?? "")).length;
+  // Boxes save when you leave them; warn before closing the tab with one still unsaved.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
   const [busy, setBusy] = useState(false);
   const day = props.days[0];
   const missing = props.days.reduce((s, x) => s + x.missingPoints, 0);
@@ -72,10 +95,8 @@ export function TripForm(props: Props) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <span className="mr-auto text-sm text-slate-600">
-          <b>{daily ? "Daily" : "Monthly"} trip form</b> · {props.days.reduce((s, x) => s + x.points, 0)} pts ·{" "}
-          {rm(props.days.reduce((s, x) => s + x.rm, 0))}
-          {daily ? " · type a missed DO into an empty box and press Save to add it" : " · type OFF / MC etc. in Remarks before exporting"}
+        <span className="mr-auto text-sm font-medium text-amber-700">
+          {unsaved > 0 && `${unsaved} box${unsaved > 1 ? "es" : ""} not saved yet`}
         </span>
         <button type="button" onClick={() => window.print()} className="btn-secondary">
           PDF / Print
@@ -91,9 +112,9 @@ export function TripForm(props: Props) {
       )}
 
       {daily ? (
-        pages(day.dos).map((rows, i) => <DailyPage key={i} {...props} day={day} rows={rows} page={i} filled={filled} setFilled={setFilled} />)
+        pages(day.dos).map((rows, i) => <DailyPage key={i} {...props} day={day} rows={rows} page={i} filled={filled} setFilled={setFilled} daySaved={daySaved} setDaySaved={setDaySaved} />)
       ) : (
-        <MonthlyPage {...props} remarks={remarks} setRemarks={setRemarks} />
+        <MonthlyPage {...props} remarks={remarks} setRemarks={setRemarks} saved={saved} setSaved={setSaved} />
       )}
     </div>
   );
@@ -107,7 +128,9 @@ const head = `${cell} text-left font-bold uppercase`;
 const typedText = "italic";
 
 /** Box keys: lorry checks are one set for the day; DO boxes are per page/row/side/field. */
-const checkKey = (c: string) => `check:${c}`;
+const checkKey = checkField;
+/** Daily boxes that save themselves (trip_form_notes). */
+const DAY_FIELDS = ["trips", ...CHECKS.map(checkKey)];
 const boxKey = (page: number, row: number, side: number, field: string) => `do:${page}:${row}:${side}:${field}`;
 
 /** A blank box the office can type into; prints and exports what was typed. */
@@ -122,7 +145,21 @@ function Blank({ k, label, filled, setFilled, className = "" }: Filled & { k: st
   );
 }
 
-function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, setFilled, canEditPoints }: Props & Filled & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
+function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, setFilled, daySaved, setDaySaved, canEditPoints }: Props & Filled & DaySaved & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
+  // A daily box that saves itself (lorry checks, Trip).
+  const note = (k: string, label: string) => (
+    <NoteBox
+      driverId={driverId}
+      date={day.date}
+      field={k}
+      label={label}
+      value={filled[k] ?? ""}
+      set={(f) => setFilled((r) => ({ ...r, [k]: f(r[k] ?? "") }))}
+      saved={daySaved[k] ?? ""}
+      onSaved={(v) => setDaySaved((r) => ({ ...r, [k]: v }))}
+      className="h-full"
+    />
+  );
   return (
     // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
     <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
@@ -142,7 +179,7 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
             <tr>
               {CHECKS.map((c) => (
                 <td key={c} className={`${cell} h-6 py-0`}>
-                  <Blank k={checkKey(c)} label={c} filled={filled} setFilled={setFilled} className="text-center" />
+                  {note(checkKey(c), c)}
                 </td>
               ))}
             </tr>
@@ -154,7 +191,7 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
             </tr>
             <tr>
               <td className={`${cell} h-6 py-0 text-center`}>
-                {day.trips || <Blank k="trips" label="Trips" filled={filled} setFilled={setFilled} className="text-center" />}
+                {day.trips || note("trips", "Trips")}
               </td>
               <td className={`${cell} text-center font-semibold`}>{day.points}</td>
               <td colSpan={2} className={`${cell} text-center`}>{rm(day.rm)}</td>
@@ -327,8 +364,8 @@ function UndoBox({ x }: { x: TripDo }) {
 }
 
 function MonthlyPage({
-  branch, driver, lorry, from, to, days, driverId, remarks, setRemarks,
-}: Props & { remarks: Record<string, string>; setRemarks: (f: (r: Record<string, string>) => Record<string, string>) => void }) {
+  branch, driver, lorry, from, to, days, driverId, remarks, setRemarks, saved, setSaved,
+}: Props & RemarkState) {
   const rows = Array.from({ length: ROWS }, (_, i) => days[i]);
   // Tighter rows than the daily form so all 31 days + signatures fit on one A4 page.
   const cell = "border border-black px-1.5 py-0.5 leading-tight";
@@ -380,11 +417,16 @@ function MonthlyPage({
               <td className={`${cell} text-center`}>{rm(x?.rm ?? 0)}</td>
               <td className={`${cell} py-0 text-center`}>
                 {x && (
-                  <input
+                  <NoteBox
+                    driverId={driverId}
+                    date={x.date}
+                    field="remark"
+                    label={`Remark for ${slashed(x.date)}`}
                     value={remarks[x.date] ?? ""}
-                    onChange={(e) => setRemarks((r) => ({ ...r, [x.date]: e.target.value.toUpperCase() }))}
-                    className={`w-full bg-transparent py-0.5 leading-tight text-center outline-none focus:bg-brand-50 print:focus:bg-transparent ${typedText}`}
-                    aria-label={`Remark for ${slashed(x.date)}`}
+                    set={(f) => setRemarks((r) => ({ ...r, [x.date]: f(r[x.date] ?? "") }))}
+                    saved={saved[x.date] ?? ""}
+                    onSaved={(v) => setSaved((r) => ({ ...r, [x.date]: v }))}
+                    className="py-0.5 leading-tight"
                   />
                 )}
               </td>
@@ -405,6 +447,51 @@ function MonthlyPage({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * A trip form box that saves itself when you leave it (or press Enter): monthly Remarks, daily
+ * Lorry checking and Trip (saveTripNote). Amber = not saved yet, red = the save failed (hover for why).
+ */
+function NoteBox({ driverId, date, field, label, value, set, saved, onSaved, className = "" }: {
+  driverId: string; date: string; field: string; label: string;
+  value: string; set: (f: (v: string) => string) => void; saved: string; onSaved: (v: string) => void; className?: string;
+}) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const dirty = value.trim() !== saved;
+  const save = () => {
+    if (!dirty || pending) return;
+    setError(null);
+    start(async () => {
+      try {
+        const done = await saveTripNote({ driverId, date, field, value });
+        onSaved(done);
+        set((v) => (v === value ? done : v)); // tidy the box only if nothing was typed while saving
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not save");
+      }
+    });
+  };
+  return (
+    <input
+      value={value}
+      maxLength={NOTE_MAX}
+      onChange={(e) => {
+        setError(null);
+        const v = e.target.value.toUpperCase();
+        set(() => v);
+      }}
+      onBlur={save}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      title={error ? `Not saved: ${error}` : pending ? "Saving…" : dirty ? "Not saved yet — leave the box to save" : undefined}
+      className={`w-full text-center outline-none focus:bg-brand-50 print:bg-transparent print:focus:bg-transparent ${typedText} ${
+        error ? "bg-rose-100" : dirty || pending ? "bg-amber-50" : "bg-transparent"
+      } ${className}`}
+      aria-label={label}
+      aria-invalid={!!error}
+    />
   );
 }
 

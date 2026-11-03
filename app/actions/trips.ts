@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { NO_POINTS_ACCESS, canEditPoints } from "@/lib/access";
 import { requireStaff } from "@/lib/auth";
 import { bestRoute } from "@/lib/geo";
-import { branchName, canPlan, storeAddress } from "@/lib/branches";
+import { branchName, canPlan, lockedBranches, storeAddress } from "@/lib/branches";
+import { cleanNote, isNoteField } from "@/lib/trip-form";
 import type { DoStatus } from "@/lib/types";
 import { parseTime, todayMY } from "@/lib/format";
 import { nextTrip, notYourBranch } from "./_shared";
@@ -254,4 +255,30 @@ export async function undoTripFormDo(doId: string) {
   revalidatePath("/deliveries");
   revalidatePath("/driver");
   revalidatePath("/orders/[id]", "page");
+}
+
+// ---------- Trip form: what the office types ------------------------
+
+/**
+ * Saves one box the office typed on the trip form (lib/trip-form.ts: monthly Remark, daily Lorry
+ * checking / Trip), so it's still there later. Blank removes the saved one. Dispatchers only for
+ * their own branches' drivers, as on the page. Returns the text as saved.
+ */
+export async function saveTripNote(input: { driverId: string; date: string; field: string; value: string }): Promise<string> {
+  const { supabase, user, profile } = await requireStaff();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error("Invalid date");
+  if (!isNoteField(input.field)) throw new Error("Unknown box.");
+  const value = cleanNote(input.value);
+
+  const { data: driver } = await supabase.from("profiles").select("role, branch").eq("id", input.driverId).single();
+  if (!driver || driver.role !== "driver") throw new Error("Driver not found");
+  const locked = lockedBranches(profile);
+  if (locked && !locked.includes(driver.branch ?? "")) throw new Error("You can only fill in trip forms for your own branch's drivers.");
+
+  const key = { driver_id: input.driverId, date: input.date, field: input.field };
+  const { error } = value
+    ? await supabase.from("trip_form_notes").upsert({ ...key, value, updated_by: user.id, updated_at: new Date().toISOString() })
+    : await supabase.from("trip_form_notes").delete().match(key);
+  if (error) throw new Error(error.message);
+  return value;
 }
