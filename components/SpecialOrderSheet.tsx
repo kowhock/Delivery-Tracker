@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { recordSpecialPrint } from "@/app/actions";
 import { branchName } from "@/lib/branches";
 import { driverLabel, fmtQty } from "@/lib/format";
-import { SPECIAL_REASONS, isSpecialReason } from "@/lib/special";
+import { SPECIAL_REASONS, hasReferDo, isSpecialReason } from "@/lib/special";
 import type { DoItem } from "@/lib/types";
 
 // Company details as on the printed Delivery Order. Check against the real letterhead before going live.
@@ -29,6 +29,7 @@ export type SheetOrder = {
   remarks: string | null;
   instructions: string | null;
   special_reason: string | null;
+  refer_do?: string | null;
   print_count: number;
   printed_at: string | null;
   created_at: string;
@@ -43,7 +44,7 @@ const dmy = (d: string) => new Date(d.length === 10 ? d + "T00:00:00+08:00" : d)
 const dmyTime = (d: string) => new Date(d).toLocaleString("en-GB", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
- * The Kurang Hantar sheet, printed as a Delivery Order like the company's Delivery Order. Print records the print
+ * The special order sheet, laid out like the company's Delivery Order (Ambil Barang is titled OWN COLLECTION). Print records the print
  * first (after that only authorised people can edit it), then opens the browser's print dialog. Copies after the
  * first say REPRINT.
  */
@@ -57,6 +58,30 @@ export function SpecialOrderSheet({ order, printedByName }: { order: SheetOrder;
   const reprint = copyNo > 1;
   const items = order.do_items ?? [];
   const reason = isSpecialReason(order.special_reason) ? SPECIAL_REASONS[order.special_reason] : "—";
+  // Ambil Barang prints titled OWN COLLECTION; the others print as a Delivery Order.
+  const title = order.special_reason === "ambil_barang" ? ["OWN", "COLLECTION"] : ["DELIVERY", "ORDER"];
+  const addressRight = order.special_reason === "tumpang_barang" || order.special_reason === "ambil_barang";
+  // Own Collection (Ambil Barang) has no signature block and is only as long as its items (half a page, or more pages if many).
+  const signatures = order.special_reason !== "ambil_barang";
+  const label = addressRight ? "w-24" : "w-20";
+  const details = (
+    <>
+      <p><span className={`inline-block ${label} text-slate-600`}>Reason</span>: <b>{reason}</b></p>
+      {/* Kurang Hantar: the DO it makes up for, as typed on the form. */}
+      {hasReferDo(order.special_reason) && (
+        <p><span className={`inline-block ${label} text-slate-600`}>Refer DO</span>: <b>{order.refer_do ?? ""}</b></p>
+      )}
+      <p><span className={`inline-block ${label} text-slate-600`}>Branch</span>: {order.branch ? `${branchName(order.branch)} (${order.branch})` : "—"}</p>
+      <p><span className={`inline-block ${label} text-slate-600`}>Delivery date</span>: {dmy(order.delivery_date)}</p>
+    </>
+  );
+  const customer = (
+    <>
+      <p className="font-semibold">{order.customer_name}</p>
+      {order.address && <p className="whitespace-pre-line">{order.address}</p>}
+      <p className="mt-2">Tel: {order.contact_phone ?? ""}</p>
+    </>
+  );
 
   const print = () =>
     start(async () => {
@@ -85,7 +110,7 @@ export function SpecialOrderSheet({ order, printedByName }: { order: SheetOrder;
         {error && <p className="w-full text-sm text-rose-600">{error}</p>}
       </div>
 
-      <article className="relative mx-auto flex min-h-[277mm] max-w-[210mm] flex-col bg-white p-[8mm] text-[11px] leading-snug text-black shadow print:min-h-[277mm] print:p-0 print:shadow-none">
+      <article className={`relative mx-auto flex max-w-[210mm] flex-col bg-white p-[8mm] text-[11px] leading-snug text-black shadow print:p-0 print:shadow-none ${signatures ? "min-h-[277mm] print:min-h-[277mm]" : ""}`}>
         {reprint && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
             <span className="-rotate-30 text-[90px] font-black tracking-widest text-black/10">REPRINT</span>
@@ -95,31 +120,28 @@ export function SpecialOrderSheet({ order, printedByName }: { order: SheetOrder;
         {/* Letterhead */}
         <header className="flex items-start gap-4">
           <div className="shrink-0 text-center">
-            <img src="/kowhock-logo-full.png" alt="Kow Hock" className="h-[22mm] w-auto" />
-            <p className="mt-0.5 text-[8px] font-semibold">{COMPANY.regNo}</p>
+            <img src="/kowhock-logo-full.png" alt="Kow Hock" className="h-[18mm] w-auto" />
+            <p className="mt-0.5 text-[7px] font-semibold">{COMPANY.regNo}</p>
           </div>
           <div className="min-w-0 pt-1">
-            <p className="text-[20px] font-bold leading-tight tracking-wider">{COMPANY.nameZh}</p>
-            <p className="text-[15px] font-bold leading-tight">{COMPANY.name}</p>
-            <p className="text-[8.5px] font-semibold">{COMPANY.tin}</p>
-            <p className="text-[8.5px]">{COMPANY.hq}</p>
-            <p className="text-[8.5px]">{COMPANY.contact}</p>
+            <p className="text-[17px] font-bold leading-tight tracking-wider">{COMPANY.nameZh}</p>
+            <p className="text-[13px] font-bold leading-tight">{COMPANY.name}</p>
+            <p className="text-[7.5px] font-semibold">{COMPANY.tin}</p>
+            <p className="text-[7.5px]">{COMPANY.hq}</p>
+            <p className="text-[7.5px]">{COMPANY.contact}</p>
           </div>
         </header>
 
-        {/* Customer · title · number */}
-        <section className="mt-4 grid grid-cols-[1fr_42%] gap-4">
-          <div className="min-h-[30mm] rounded-md border border-black px-3 py-2 text-[12px]">
-            <p className="font-semibold">{order.customer_name}</p>
-            {order.address && <p className="whitespace-pre-line">{order.address}</p>}
-            <p className="mt-2">Tel: {order.contact_phone ?? ""}</p>
-          </div>
+        {/* Kurang Hantar / Ambil Barang: reason, branch, date on the left; customer and delivery address on the right.
+            Every other reason (System Down, Stock Transfer …): customer and address on the left, reason on the right. */}
+        <section className={`mt-4 grid gap-4 ${addressRight ? "grid-cols-[1fr_52%]" : "grid-cols-[1fr_42%]"}`}>
+          <div className="min-h-[30mm] rounded-md border border-black px-3 py-2 text-[12px]">{addressRight ? details : customer}</div>
           <div className="flex flex-col gap-2">
             <div className="flex items-start justify-between gap-2">
               <h1 className="text-[20px] font-bold leading-tight tracking-wide">
-                DELIVERY
+                {title[0]}
                 <br />
-                ORDER
+                {title[1]}
               </h1>
               <div className="text-right text-[13px] font-semibold">
                 <p>{order.do_no}</p>
@@ -127,10 +149,8 @@ export function SpecialOrderSheet({ order, printedByName }: { order: SheetOrder;
                 {reprint && <p className="mt-1 inline-block rounded border border-black px-1.5 text-[10px] font-bold">REPRINT · COPY {copyNo}</p>}
               </div>
             </div>
-            <div className="flex-1 rounded-md border border-black px-3 py-2 text-[11.5px]">
-              <p><span className="inline-block w-20 text-slate-600">Reason</span>: <b>{reason}</b></p>
-              <p><span className="inline-block w-20 text-slate-600">Branch</span>: {order.branch ? `${branchName(order.branch)} (${order.branch})` : "—"}</p>
-              <p><span className="inline-block w-20 text-slate-600">Delivery date</span>: {dmy(order.delivery_date)}</p>
+            <div className={`flex-1 rounded-md border border-black px-3 py-2 ${addressRight ? "min-h-[31mm] text-[12px]" : "text-[11.5px]"}`}>
+              {addressRight ? customer : details}
             </div>
           </div>
         </section>
@@ -173,10 +193,11 @@ export function SpecialOrderSheet({ order, printedByName }: { order: SheetOrder;
           </tbody>
         </table>
 
-        <div className="flex-1" />
+        {/* Full-page sheets push the remarks and signatures to the bottom; Own Collection just ends after its remarks. */}
+        {signatures && <div className="flex-1" />}
 
         {/* Remarks / instructions */}
-        <section className="mt-4 space-y-1 text-[12px]">
+        <section className={`space-y-1 text-[12px] ${signatures ? "mt-4" : "mt-10"}`}>
           {/* The form's Remark is saved in instructions; remarks only on SDOs from before that. */}
           <p className="flex gap-2">
             <b className="shrink-0">REMARKS:</b>
@@ -184,31 +205,33 @@ export function SpecialOrderSheet({ order, printedByName }: { order: SheetOrder;
           </p>
         </section>
 
-        {/* Signatures, like the Delivery Order */}
-        <footer className="mt-4 grid grid-cols-3 items-end gap-4 border-t border-black pt-3 text-[11px]">
-          <div>
-            <p className="font-semibold">E. &amp; O. E.</p>
-            <p className="font-semibold">for {COMPANY.name}</p>
-            <div className="mt-14 border-t border-black pt-1 text-center font-semibold">Authorised Signature</div>
-          </div>
-          <div className="divide-y divide-black rounded-md border border-black">
-            {[
-              ["Driver", order.driver?.full_name ?? ""],
-              ["Time In", ""],
-              ["Time Out", ""],
-              ["Time Back", ""],
-              ["Store Check", ""],
-            ].map(([label, value]) => (
-              <p key={label} className="flex px-2 py-1.5">
-                <b className="w-20 shrink-0">{label}</b>: <span className="ml-1">{value}</span>
-              </p>
-            ))}
-          </div>
-          <div className="text-center">
-            <p className="font-semibold">Received in good order</p>
-            <div className="mt-20 border-t border-black pt-1 font-semibold">Signature / Name / Company Chop</div>
-          </div>
-        </footer>
+        {/* Signatures, like the Delivery Order (not on Own Collection) */}
+        {signatures && (
+          <footer className="mt-4 grid grid-cols-3 items-end gap-4 border-t border-black pt-3 text-[11px]">
+            <div>
+              <p className="font-semibold">E. &amp; O. E.</p>
+              <p className="font-semibold">for {COMPANY.name}</p>
+              <div className="mt-14 border-t border-black pt-1 text-center font-semibold">Authorised Signature</div>
+            </div>
+            <div className="divide-y divide-black rounded-md border border-black">
+              {[
+                ["Driver", order.driver?.full_name ?? ""],
+                ["Time In", ""],
+                ["Time Out", ""],
+                ["Time Back", ""],
+                ["Store Check", ""],
+              ].map(([label, value]) => (
+                <p key={label} className="flex px-2 py-1.5">
+                  <b className="w-20 shrink-0">{label}</b>: <span className="ml-1">{value}</span>
+                </p>
+              ))}
+            </div>
+            <div className="text-center">
+              <p className="font-semibold">Received in good order</p>
+              <div className="mt-20 border-t border-black pt-1 font-semibold">Signature / Name / Company Chop</div>
+            </div>
+          </footer>
+        )}
 
         <p className="mt-3 text-[9px] text-neutral-600">
           Created by {order.creator?.full_name ?? "—"} on {dmyTime(order.created_at)}

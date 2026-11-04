@@ -15,6 +15,8 @@ import {
   PRINT_HELP,
   isGoodsReason,
   isPrintReason,
+  hasReferDo,
+  cleanReferDo,
   isRetiredReason,
   isSpecialReason,
   parseSpecialItems,
@@ -41,7 +43,8 @@ function readSpecialOrder(formData: FormData, branch: string | null, who: Profil
   const withItems = isPrintReason(reason);
   const items = withItems ? parseSpecialItems(formData) : [];
   if (withItems && !items.length) throw new Error("Add at least one item (name, UOM and quantity).");
-  return { reason, items };
+  const referDo = hasReferDo(reason) ? cleanReferDo(String(formData.get("refer_do") ?? "")) : null;
+  return { reason, items, referDo };
 }
 
 /** Replaces a special order's items with the ones keyed in. */
@@ -81,7 +84,7 @@ export async function createSpecialDo(formData: FormData) {
       points,
       points_manual: true,
       source: "special",
-      ...(so ? { special_reason: so.reason } : {}),
+      ...(so ? { special_reason: so.reason, refer_do: so.referDo } : {}),
     })
     .select("id, do_no")
     .single();
@@ -162,7 +165,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
       remarks: null,
       points,
       points_manual: true,
-      ...(so ? { special_reason: so.reason } : {}),
+      ...(so ? { special_reason: so.reason, refer_do: so.referDo } : {}),
     })
     .eq("id", id);
   if (error) throw new Error(error.message);

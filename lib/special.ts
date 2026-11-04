@@ -44,6 +44,17 @@ export const usesSpecialOrders = (branch: string | null | undefined) => !!branch
 
 export const isGoodsReason = (r: string | null | undefined) => !!r && (GOODS_REASONS as string[]).includes(r);
 
+/** Kurang Hantar has a Refer DO box: the DO number it makes up for. */
+export const hasReferDo = (r: string | null | undefined) => r === "tumpang_barang";
+export const REFER_DO_MAX = 40;
+/** The Refer DO as typed: trimmed, upper case, spaces collapsed; null if blank. */
+export function cleanReferDo(text: string | null | undefined): string | null {
+  const v = (text ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+  if (!v) return null;
+  if (v.length > REFER_DO_MAX) throw new Error(`Refer DO can be at most ${REFER_DO_MAX} characters.`);
+  return v;
+}
+
 /** Have item rows and print (as a Delivery Order). */
 export const PRINT_REASONS: SpecialReason[] = ["tumpang_barang", "ambil_barang", "system_down"];
 export const isPrintReason = (r: string | null | undefined) => !!r && (PRINT_REASONS as string[]).includes(r);

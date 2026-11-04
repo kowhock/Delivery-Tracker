@@ -5,11 +5,11 @@ import { useState, type KeyboardEvent } from "react";
 import { BRANCHES, driversForBranch } from "@/lib/branches";
 import { NEAR_POINTS } from "@/lib/commission";
 import { driverLabel } from "@/lib/format";
-import { GOODS_REASONS, RETIRED_REASONS, SPECIAL_REASONS, isPrintReason, usesSpecialOrders, type SpecialReason } from "@/lib/special";
+import { GOODS_REASONS, REFER_DO_MAX, RETIRED_REASONS, SPECIAL_REASONS, hasReferDo, isPrintReason, usesSpecialOrders, type SpecialReason } from "@/lib/special";
 import type { DeliveryOrder, DoItem, Profile } from "@/lib/types";
 
 type Values = Pick<DeliveryOrder, "customer_name" | "address" | "contact_phone" | "delivery_date" | "branch" | "driver_id" | "points" | "instructions"> &
-  Partial<Pick<DeliveryOrder, "helper_branch" | "special_reason" | "remarks">>;
+  Partial<Pick<DeliveryOrder, "helper_branch" | "special_reason" | "remarks" | "refer_do">>;
 type ItemRow = { key: number; description: string; uom: string; qty: string };
 let nextKey = 0;
 const blankRow = (): ItemRow => ({ key: nextKey++, description: "", uom: "", qty: "" });
@@ -73,6 +73,13 @@ export function SpecialDoForm({
             <option value="" disabled>Choose a reason…</option>
             {reasons.map((r) => <option key={r} value={r}>{SPECIAL_REASONS[r]}</option>)}
           </select>
+        </div>
+      )}
+      {special && hasReferDo(reason) && (
+        <div className="sm:col-span-2">
+          {/* Kurang Hantar: the DO it makes up for. Printed on the sheet below the Reason. */}
+          <label className="label">Refer DO</label>
+          <input name="refer_do" defaultValue={values.refer_do ?? ""} maxLength={REFER_DO_MAX} className="input uppercase" placeholder="e.g. PDD-00046254" />
         </div>
       )}
       <div className="sm:col-span-2">

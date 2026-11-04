@@ -122,3 +122,18 @@ describe("reasons", () => {
     expect(SPECIAL_REASONS[RETIRED_REASONS[0]]).toBe("Ambil DO / Give DO");
   });
 });
+
+describe("Refer DO (Kurang Hantar)", () => {
+  it("only Kurang Hantar has it", async () => {
+    const { hasReferDo } = await import("./special");
+    expect(hasReferDo("tumpang_barang")).toBe(true);
+    expect(hasReferDo("ambil_barang")).toBe(false);
+    expect(hasReferDo(null)).toBe(false);
+  });
+  it("cleans what is typed", async () => {
+    const { cleanReferDo } = await import("./special");
+    expect(cleanReferDo("  pdd-00046254 ")).toBe("PDD-00046254");
+    expect(cleanReferDo("   ")).toBeNull();
+    expect(() => cleanReferDo("x".repeat(41))).toThrow();
+  });
+});

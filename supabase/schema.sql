@@ -187,6 +187,7 @@ create table public.delivery_orders (
   created_at     timestamptz not null default now(),
   -- Special orders (GP first, see lib/special.ts): why it was keyed in; printed/void state.
   special_reason text check (special_reason in ('ambil_barang', 'tumpang_barang', 'stock_transfer', 'system_down', 'other', 'ambil_give_do')),
+  refer_do       text check (length(refer_do) <= 40), -- Kurang Hantar: the DO it makes up for (typed on the form)
   print_count    int not null default 0,       -- times printed; > 0 = only admins / sdo_goods edit (guard_special_order)
   printed_at     timestamptz,                  -- first print
   printed_by     uuid references public.profiles on delete set null,
@@ -490,10 +491,10 @@ begin
   end if;
   if old.print_count > 0 and not public.can_handle_goods() and (
        new.customer_name, new.address, new.contact_phone, new.remarks, new.instructions,
-       new.points, new.special_reason, new.branch, new.do_no
+       new.points, new.special_reason, new.branch, new.do_no, new.refer_do
      ) is distinct from (
        old.customer_name, old.address, old.contact_phone, old.remarks, old.instructions,
-       old.points, old.special_reason, old.branch, old.do_no
+       old.points, old.special_reason, old.branch, old.do_no, old.refer_do
      ) then
     raise exception '% has been printed — only admins and dispatchers an admin has allowed can edit it.', old.do_no;
   end if;

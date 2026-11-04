@@ -264,22 +264,27 @@ export default async function DeliveriesPage({
               All dates
             </NavLink>
           </nav>
-          {/* Changing dates or branch starts a fresh look, so it drops any DO search. */}
+          {/* Changing dates or branch starts a fresh look, so it drops any DO search. Both load as soon as they're picked. */}
+          {(!locked || locked.length > 1) && (
+            // Short labels keep the dropdown narrow, so the DO search fits on the same row.
+            <NavSelect
+              aria-label="Branch"
+              title="Branch (★ = mine)"
+              value={branch || "all"}
+              options={[
+                { value: "all", label: "All", href: href({ ...keep, branch: "all", ...dateParams }) },
+                ...BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => ({
+                  value: b.code,
+                  label: `${b.code}${!locked && userBranches(profile.branch).includes(b.code) ? " ★" : ""}`,
+                  href: href({ ...keep, branch: b.code, ...dateParams }),
+                })),
+              ]}
+              className="input w-auto px-2 py-1 text-xs"
+            />
+          )}
           <NavForm className="flex flex-wrap items-center gap-1.5">
-            {hidden({ ...keep, branch: undefined })}
-            {(!locked || locked.length > 1) && (
-              // Short labels keep the dropdown narrow, so the DO search fits on the same row.
-              <select name="branch" defaultValue={branch || "all"} aria-label="Branch" title="Branch (★ = mine)" className="input w-auto px-2 py-1 text-xs">
-                <option value="all">{locked ? "All" : "All"}</option>
-                {BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => (
-                  <option key={b.code} value={b.code}>
-                    {b.code}{!locked && userBranches(profile.branch).includes(b.code) ? " ★" : ""}
-                  </option>
-                ))}
-              </select>
-            )}
+            {hidden(keep)}
             <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={today} small align="left" />
-            <button className="btn-secondary px-2.5 py-1 text-xs">Go</button>
           </NavForm>
         </div>
 
