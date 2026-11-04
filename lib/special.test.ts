@@ -32,10 +32,11 @@ describe("usesSpecialOrders", () => {
 });
 
 describe("canEditSpecial", () => {
-  it("other reasons: creator or admin", () => {
-    expect(canEditSpecial(sdo(), creator)).toBe(true);
-    expect(canEditSpecial(sdo(), admin)).toBe(true);
-    expect(canEditSpecial(sdo(), other)).toBe(false);
+  it("other reasons (Stock Transfer, Other): any staff until printed", () => {
+    for (const reason of ["stock_transfer", "other"]) {
+      for (const who of [creator, admin, other, allowed]) expect(canEditSpecial(sdo({ special_reason: reason }), who)).toBe(true);
+      expect(canEditSpecial(sdo({ special_reason: reason }), { id: "d", role: "driver" })).toBe(false);
+    }
   });
   it("Kurang Hantar: only allowed dispatchers and admins, even if someone else created it", () => {
     expect(canEditSpecial(sdo({ special_reason: "tumpang_barang" }), allowed)).toBe(true);

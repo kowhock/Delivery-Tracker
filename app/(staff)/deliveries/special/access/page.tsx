@@ -16,7 +16,7 @@ export default async function AdminAccessPage() {
         <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-500">
           <li>
             <b>Special order</b>: create, edit and print Kurang Hantar special orders (every branch),
-            and edit special orders once printed. Ambil Barang and System Down are open to all staff until printed.
+            and edit special orders once printed. Every other special order is open to all staff until printed.
           </li>
           <li>
             <b>Edit points</b>: change a DO&apos;s points on Driver status and the trip form. Anyone can set points on the special DO form.

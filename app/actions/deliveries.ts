@@ -104,7 +104,7 @@ const SPECIAL_EDITABLE: DoStatus[] = ["pending", "assigned", "failed"];
 
 const SPECIAL_COLUMNS = "id, do_no, source, status, branch, driver_id, delivery_date, helper_branch, created_by, special_no, special_reason, print_count, voided_at";
 
-/** Who may change it: see canEditSpecial (goods or printed SDOs → admins + allowed dispatchers; others → creator or admin; void → nobody). */
+/** Who may change it: see canEditSpecial (goods or printed SDOs → admins + allowed dispatchers; others → any staff; void → nobody). */
 async function ownSpecialDo(id: string) {
   const s = await requireStaff();
   const { data: d } = await s.supabase.from("delivery_orders").select(SPECIAL_COLUMNS).eq("id", id).single();
@@ -140,10 +140,9 @@ export async function updateSpecialDo(id: string, formData: FormData) {
     throw new Error("Pick a branch for this special order.");
   }
   const so = readSpecialOrder(formData, branch, profile, d.special_reason);
-  // Someone editing an open-to-all SDO (Ambil Barang / System Down) they didn't create can't switch it to a
-  // reason only its creator may edit — they'd lock themselves (and others) out of it.
+  // Can't switch it to a reason this person isn't allowed to edit (readSpecialOrder already stops Kurang Hantar).
   if (so && !canEditSpecial({ ...d, special_reason: so.reason }, { ...profile, id: user.id })) {
-    throw new Error(`Only the person who created ${d.do_no} can change it to ${SPECIAL_REASONS[so.reason]}.`);
+    throw new Error(`You can't change ${d.do_no} to ${SPECIAL_REASONS[so.reason]}.`);
   }
   // Only a newly picked driver must be the branch's; one it already had stays.
   if (driverId && driverChanged) await checkBranchDriver(supabase, driverId, branch, d.helper_branch);

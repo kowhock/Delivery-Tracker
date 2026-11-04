@@ -11,7 +11,8 @@ import { BRANCHES } from "./branches";
  * - Kurang Hantar (the "goods" reason): only admins and dispatchers an admin ticked on Admin access
  *   (profiles.sdo_goods) can pick it, edit or print it.
  * - Ambil Barang and System Down (OPEN_REASONS): any staff can open, edit and print them.
- * - Every other reason: a normal special order — creator or admin edits, no items, no print.
+ * - Every other reason (Stock Transfer, Other): any staff can edit it (since 2026-11-04; before, only its creator
+ *   or an admin), no items, no print.
  * - Once printed, only admins and ticked dispatchers (canHandleGoods) can edit it; anyone allowed to
  *   print can reprint (marked REPRINT).
  * - No special DO is ever deleted (any branch, any reason): an admin voids it (kept, shown as VOID).
@@ -59,7 +60,7 @@ export function cleanReferDo(text: string | null | undefined): string | null {
 export const PRINT_REASONS: SpecialReason[] = ["tumpang_barang", "ambil_barang", "system_down"];
 export const isPrintReason = (r: string | null | undefined) => !!r && (PRINT_REASONS as string[]).includes(r);
 
-/** Any staff may open, edit (until printed) and print these, not only the creator. */
+/** Any staff may open, edit (until printed) and print these. */
 export const OPEN_REASONS: SpecialReason[] = ["ambil_barang", "system_down"];
 export const isOpenReason = (r: string | null | undefined) => !!r && (OPEN_REASONS as string[]).includes(r);
 
@@ -73,13 +74,12 @@ type Who = { id: string; role: string; sdo_goods?: boolean | null };
 
 /**
  * Edit rights, ignoring delivery status (see SPECIAL_EDITABLE): goods or printed SDOs → admins + ticked
- * dispatchers; Ambil Barang / System Down → any staff; others → creator or admin.
+ * dispatchers; every other unprinted SDO → any staff.
  */
 export function canEditSpecial(d: Sdo, who: Who): boolean {
   if (d.source !== "special" || d.special_no || d.voided_at) return false;
   if (d.print_count > 0 || isGoodsReason(d.special_reason)) return canHandleGoods(who);
-  if (isOpenReason(d.special_reason)) return isStaff(who);
-  return d.created_by === who.id || who.role === "admin";
+  return isStaff(who);
 }
 
 export const PRINT_HELP =
