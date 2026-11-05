@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type KeyboardEvent } from "react";
+import { startTransition, useActionState, useState, type FormEvent, type KeyboardEvent } from "react";
 import { BRANCHES, driversForBranch } from "@/lib/branches";
 import { NEAR_POINTS } from "@/lib/commission";
 import { driverLabel } from "@/lib/format";
 import { GOODS_REASONS, REFER_DO_MAX, RETIRED_REASONS, SPECIAL_REASONS, hasReferDo, isPrintReason, usesSpecialOrders, type SpecialReason } from "@/lib/special";
-import type { DeliveryOrder, DoItem, Profile } from "@/lib/types";
+import type { DeliveryOrder, DoItem, FormState, Profile } from "@/lib/types";
 
 type Values = Pick<DeliveryOrder, "customer_name" | "address" | "contact_phone" | "delivery_date" | "branch" | "driver_id" | "points" | "instructions"> &
   Partial<Pick<DeliveryOrder, "helper_branch" | "special_reason" | "remarks" | "refer_do">>;
@@ -36,7 +36,8 @@ export function SpecialDoForm({
   canGoods = false,
   items = [],
 }: {
-  action: (formData: FormData) => Promise<void>;
+  /** Redirects when saved; otherwise returns why not, shown above the button. */
+  action: (prev: FormState, formData: FormData) => Promise<FormState>;
   drivers: Pick<Profile, "id" | "full_name" | "lorry_no" | "branch">[];
   /** Dispatchers: the only branches they can pick. */
   lockedTo: string[] | null;
@@ -47,6 +48,14 @@ export function SpecialDoForm({
   /** Edit page: the special order's items so far. */
   items?: Pick<DoItem, "description" | "uom" | "qty">[];
 }) {
+  const [state, save, saving] = useActionState(action, undefined);
+  // Sent from onSubmit, not <form action>: React resets a form after an action, which would wipe
+  // what was keyed in when the save is refused.
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(() => save(formData));
+  };
   const [branch, setBranch] = useState(values.branch ?? lockedTo?.[0] ?? "");
   const [driverId, setDriverId] = useState(values.driver_id ?? "");
   // Only the branch's own drivers. A driver it already had from another branch stays pickable
@@ -65,7 +74,7 @@ export function SpecialDoForm({
   const reasons = (Object.keys(SPECIAL_REASONS) as SpecialReason[]).filter((r) => r === values.special_reason || ((canGoods || !GOODS_REASONS.includes(r)) && !RETIRED_REASONS.includes(r)));
 
   return (
-    <form action={action} onKeyDown={enterToNext} className="card grid gap-4 p-5 sm:grid-cols-2">
+    <form onSubmit={submit} onKeyDown={enterToNext} className="card grid gap-4 p-5 sm:grid-cols-2">
       {special && (
         <div className="sm:col-span-2">
           <label className="label">Reason for this special order</label>
@@ -146,7 +155,9 @@ export function SpecialDoForm({
                 <div key={r.key} className="grid grid-cols-[1fr_6rem_6rem_2rem] gap-2">
                   <input name="item_name" value={r.description} onChange={(e) => setRow(r.key, { description: e.target.value })} className="input" placeholder="e.g. Batu Bata" />
                   <input name="item_uom" value={r.uom} onChange={(e) => setRow(r.key, { uom: e.target.value })} className="input" placeholder="NOS" />
-                  <input name="item_qty" type="number" min={1} step={1} inputMode="numeric" value={r.qty} onChange={(e) => setRow(r.key, { qty: e.target.value })} className="input" placeholder="1" />
+                  {/* Plain text, not type="number": a number box sends nothing for what it can't read (full-width １ from
+                      Chinese keyboards, pasted text) while still showing it. The server reads and checks it (parseSpecialItems). */}
+                  <input name="item_qty" type="text" inputMode="numeric" autoComplete="off" value={r.qty} onChange={(e) => setRow(r.key, { qty: e.target.value })} className="input" placeholder="1" />
                   <button
                     type="button"
                     aria-label="Remove item"
@@ -166,8 +177,13 @@ export function SpecialDoForm({
           </div>
         </>
       )}
+      {state?.error && (
+        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 sm:col-span-2">
+          {state.error}
+        </p>
+      )}
       <div className="flex gap-2 sm:col-span-2">
-        <button className="btn-primary">{submitLabel}</button>
+        <button className="btn-primary" disabled={saving}>{saving ? "Saving…" : submitLabel}</button>
         <Link href="/deliveries" className="btn-secondary">Cancel</Link>
       </div>
     </form>

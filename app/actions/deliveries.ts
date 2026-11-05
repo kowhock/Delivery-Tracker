@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
 import { BRANCHES, branchFromDoNo, branchName, branchToSave, canPlan } from "@/lib/branches";
-import { TIME_SLOTS, type DoStatus, type Profile } from "@/lib/types";
+import { TIME_SLOTS, type DoStatus, type FormState, type Profile } from "@/lib/types";
 import {
   SPECIAL_REASONS,
   canEditSpecial,
@@ -56,8 +56,28 @@ async function saveSpecialItems(supabase: Awaited<ReturnType<typeof requireStaff
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Runs a form save; a refusal ("Item 1: enter the quantity", …) comes back as { error } for the form
+ * to show. Thrown, Next.js would hide the message in production and show only an error code.
+ * Next.js's own redirects (login, the page after saving) still go through.
+ */
+async function formSave(save: () => Promise<string>): Promise<FormState> {
+  let to: string;
+  try {
+    to = await save();
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: e instanceof Error ? e.message : "Could not save." };
+  }
+  redirect(to);
+}
+
 /** Special DO keyed in by the office (not from AutoCount): own address, points and remark. */
-export async function createSpecialDo(formData: FormData) {
+export async function createSpecialDo(_prev: FormState, formData: FormData): Promise<FormState> {
+  return formSave(() => saveNewSpecialDo(formData));
+}
+
+async function saveNewSpecialDo(formData: FormData): Promise<string> {
   const { supabase, profile } = await requireStaff();
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
   const points = Number(formData.get("points")); // special DOs: everyone sets points here (lib/access.ts)
@@ -96,7 +116,7 @@ export async function createSpecialDo(formData: FormData) {
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
   revalidatePath("/driver");
-  redirect(`/deliveries?from=${date}&to=${date}`);
+  return `/deliveries?from=${date}&to=${date}`;
 }
 
 /** Special DOs can be changed until the driver starts it. Never deleted: an admin voids them. */
@@ -124,7 +144,11 @@ async function ownSpecialDo(id: string) {
   return { ...s, d };
 }
 
-export async function updateSpecialDo(id: string, formData: FormData) {
+export async function updateSpecialDo(id: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  return formSave(() => saveSpecialDoChanges(id, formData));
+}
+
+async function saveSpecialDoChanges(id: string, formData: FormData): Promise<string> {
   const { supabase, profile, user, d } = await ownSpecialDo(id);
   const get = (k: string) => String(formData.get(k) ?? "").trim() || null;
   const points = Number(formData.get("points")); // special DOs: everyone sets points here (lib/access.ts)
@@ -174,7 +198,7 @@ export async function updateSpecialDo(id: string, formData: FormData) {
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
   revalidatePath("/driver");
-  redirect(`/deliveries?from=${date}&to=${date}`);
+  return `/deliveries?from=${date}&to=${date}`;
 }
 
 /**

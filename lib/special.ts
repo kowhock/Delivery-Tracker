@@ -91,6 +91,17 @@ export const canPrintSpecial = (d: Sdo, who: Who) =>
 
 export type SpecialItemInput = { description: string; uom: string; qty: number };
 
+/**
+ * A quantity as typed, made plain: full-width digits from Chinese keyboards (１２) become 12, and
+ * spaces (also non-breaking ones from copy-paste) and thousands commas go. "" if nothing is left.
+ */
+export function cleanQty(raw: string): string {
+  return raw
+    .replace(/[\uFF10-\uFF19]/g, (c) => String(c.charCodeAt(0) - 0xff10))
+    .replace(/\uFF0E/g, ".")
+    .replace(/[\s\u00A0\u200B,\uFF0C]/g, "");
+}
+
 /** Item rows from the form (item_name[], item_uom[], item_qty[]); blank rows are skipped. */
 export function parseSpecialItems(formData: FormData): SpecialItemInput[] {
   const names = formData.getAll("item_name").map((v) => String(v).trim());
@@ -101,10 +112,12 @@ export function parseSpecialItems(formData: FormData): SpecialItemInput[] {
     const uom = uoms[i] ?? "";
     const raw = qtys[i] ?? "";
     if (!description && !uom && !raw) return;
-    const qty = Number(raw);
     if (!description) throw new Error(`Item ${i + 1}: enter the item name.`);
     if (!uom) throw new Error(`Item ${i + 1} (${description}): enter the UOM.`);
-    if (!Number.isInteger(qty) || qty < 1) throw new Error(`Item ${i + 1} (${description}): quantity must be a whole number (1, 2, 3…).`);
+    const typed = cleanQty(raw);
+    if (!typed) throw new Error(`Item ${i + 1} (${description}): enter the quantity.`);
+    const qty = /^\d+(\.0*)?$/.test(typed) ? Number(typed) : NaN;
+    if (!Number.isInteger(qty) || qty < 1) throw new Error(`Item ${i + 1} (${description}): "${raw}" isn't a whole number — key in 1, 2, 3…`);
     items.push({ description, uom, qty });
   });
   return items;

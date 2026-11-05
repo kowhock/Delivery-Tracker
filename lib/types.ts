@@ -1,5 +1,7 @@
 export type Role = "admin" | "dispatcher" | "driver";
 export type SoStatus = "open" | "partial" | "fulfilled" | "cancelled";
+/** What a form's server action hands back: nothing when it saved (it redirects), or why it didn't. */
+export type FormState = { error?: string } | undefined;
 export type DoStatus = "pending" | "assigned" | "out_for_delivery" | "delivered" | "failed";
 
 export const DO_STATUSES: DoStatus[] = ["pending", "assigned", "out_for_delivery", "delivered", "failed"];

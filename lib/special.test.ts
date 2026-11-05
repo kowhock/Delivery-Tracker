@@ -111,7 +111,20 @@ describe("parseSpecialItems", () => {
     expect(() => parseSpecialItems(form([["Pipe", "", "1"]]))).toThrow(/UOM/);
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "0"]]))).toThrow(/quantity/);
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "1.5"]]))).toThrow(/quantity/);
-    expect(() => parseSpecialItems(form([["Pipe", "LGTH", "-2"]]))).toThrow(/quantity/);
+    expect(() => parseSpecialItems(form([["Pipe", "LGTH", "-2"]]))).toThrow(/whole number/);
+    expect(() => parseSpecialItems(form([["Pipe", "LGTH", "1pcs"]]))).toThrow(/"1pcs" isn't a whole number/);
+  });
+  it("says so when the quantity is empty", () => {
+    expect(() => parseSpecialItems(form([["BRC A6 BS", "PCS", ""]]))).toThrow(/enter the quantity/);
+    expect(() => parseSpecialItems(form([["BRC A6 BS", "PCS", "   "]]))).toThrow(/enter the quantity/);
+  });
+  it("reads full-width digits, stray spaces and thousands commas", () => {
+    expect(parseSpecialItems(form([["BRC A6 BS", "PCS", "１"], ["Bata", "NOS", "1,352"], ["Simen", "BAG", "\u00A03 "], ["Pipe", "LGTH", "2.00"]]))).toEqual([
+      { description: "BRC A6 BS", uom: "PCS", qty: 1 },
+      { description: "Bata", uom: "NOS", qty: 1352 },
+      { description: "Simen", uom: "BAG", qty: 3 },
+      { description: "Pipe", uom: "LGTH", qty: 2 },
+    ]);
   });
 });
 
