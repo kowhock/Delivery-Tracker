@@ -117,7 +117,7 @@ export function parseSpecialItems(formData: FormData): SpecialItemInput[] {
     const typed = cleanQty(raw);
     if (!typed) throw new Error(`Item ${i + 1} (${description}): enter the quantity.`);
     const qty = /^\d+(\.0*)?$/.test(typed) ? Number(typed) : NaN;
-    if (!Number.isInteger(qty) || qty < 1) throw new Error(`Item ${i + 1} (${description}): "${raw}" isn't a whole number — key in 1, 2, 3…`);
+    if (!Number.isInteger(qty) || qty < 1) throw new Error(`Item ${i + 1} (${description}): quantity "${raw}" — key in a whole number, 1 or more (1, 2, 3…).`);
     items.push({ description, uom, qty });
   });
   return items;

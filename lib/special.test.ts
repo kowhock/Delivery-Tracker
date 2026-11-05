@@ -112,7 +112,7 @@ describe("parseSpecialItems", () => {
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "0"]]))).toThrow(/quantity/);
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "1.5"]]))).toThrow(/quantity/);
     expect(() => parseSpecialItems(form([["Pipe", "LGTH", "-2"]]))).toThrow(/whole number/);
-    expect(() => parseSpecialItems(form([["Pipe", "LGTH", "1pcs"]]))).toThrow(/"1pcs" isn't a whole number/);
+    expect(() => parseSpecialItems(form([["Pipe", "LGTH", "1pcs"]]))).toThrow(/quantity "1pcs"/);
   });
   it("says so when the quantity is empty", () => {
     expect(() => parseSpecialItems(form([["BRC A6 BS", "PCS", ""]]))).toThrow(/enter the quantity/);
