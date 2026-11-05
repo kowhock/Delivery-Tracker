@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
+import { canEditItemNote, cleanItemNote, isIcbDo } from "@/lib/item-note";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
 import { BRANCHES, branchFromDoNo, branchName, branchToSave, canPlan } from "@/lib/branches";
@@ -575,4 +576,32 @@ export async function setHelperBranch(doId: string, helper: string | null) {
   });
   revalidatePath("/deliveries");
   revalidatePath("/drivers");
+}
+
+/**
+ * M- DOs (inter-company invoices): the office types the items, one per line ("Cement x 1 bag"), since
+ * AutoCount sends none for invoices. Admins and the delivering (or helping) branch, until delivered.
+ * Returns why not instead of throwing, so the message isn't hidden in production. lib/item-note.ts.
+ */
+export async function saveItemNote(doId: string, text: string): Promise<FormState> {
+  try {
+    const { supabase, profile } = await requireStaff();
+    const note = cleanItemNote(text);
+    const { data: d } = await supabase.from("delivery_orders").select("id, do_no, status, branch, helper_branch, cancelled, item_note").eq("id", doId).single();
+    if (!d) return { error: "DO not found." };
+    if (!isIcbDo(d.do_no)) return { error: "Items can only be typed on M- DOs." };
+    if (d.status === "delivered") return { error: `${d.do_no} is delivered — its items can't change any more.` };
+    if (!canEditItemNote(d, profile)) return { error: notYourBranch(d.branch ?? "") };
+    if (note === d.item_note) return undefined;
+    const { error } = await supabase.from("delivery_orders").update({ item_note: note }).eq("id", doId);
+    if (error) return { error: error.message };
+    await supabase.from("status_events").insert({ do_id: doId, status: d.status, note: `${d.do_no} items ${note ? "typed" : "cleared"}` });
+  } catch (e) {
+    unstable_rethrow(e);
+    return { error: e instanceof Error ? e.message : "Could not save." };
+  }
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  return undefined;
 }

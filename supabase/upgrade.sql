@@ -69,3 +69,9 @@ begin
   end if;
   return new;
 end $$;
+
+-- 2026-11-05: M- DOs (inter-company invoices) get typed items: AutoCount sends no item lines for
+-- invoices, so the office types them, one per line ("Cement x 1 bag"). lib/item-note.ts.
+-- New empty column: no existing rows change. The AutoCount sync never writes it; drivers can't
+-- change it (guard_delivery_order keeps every column the driver app doesn't set).
+alter table public.delivery_orders add column if not exists item_note text check (length(item_note) <= 1000);

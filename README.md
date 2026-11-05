@@ -130,7 +130,8 @@ Rules:
   down on long results; days that fail are listed at the end so they can be run again).
 
 What the IPS AutoCount API doesn't send (asked for; the app fills them in once it does):
-- item lines on invoices (`M-` DOs have no items), created time and created user, Transfer From / To
+- item lines on invoices (`M-` DOs have none: the office types them on the Deliveries card, one per line,
+  saved in `item_note`, which syncs never touch — `lib/item-note.ts`), created time and created user, Transfer From / To
   (so SO ↔ DO links and SOs aren't synced yet), and the ICB fields.
 
 `importAcSalesOrders()` is kept for the SO sync (`salesorder/select`) still to be built.

@@ -9,6 +9,7 @@ import { MESSAGES, whatsappLink } from "@/lib/whatsapp";
 import { TIME_SLOTS, type DeliveryOrder } from "@/lib/types";
 import { DICT, type Lang } from "@/lib/i18n";
 import { pointsVisible } from "@/lib/commission";
+import { itemNoteLines } from "@/lib/item-note";
 
 type Dict = (typeof DICT)[Lang];
 
@@ -26,6 +27,7 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
   const waDelivered = whatsappLink(job.contact_phone, MESSAGES.delivered(msgData));
   // The office's typed address goes to the exact spot Google found for it.
   const address = mapAddress(job);
+  const noteLines = itemNoteLines(job.item_note);
   const spot = job.map_address && job.geo_lat != null && job.geo_lng != null && job.geo_input === address ? { lat: job.geo_lat, lng: job.geo_lng } : null;
   const maps = address ? mapsLinks(address, spot) : null;
   const finished = job.status === "delivered";
@@ -73,6 +75,15 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
           </div>
         )}
 
+        {/* M- DOs: items the office typed, one per line (AutoCount sends none for invoices). */}
+        {!job.do_items?.length && noteLines.length > 0 && (
+          <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
+            <p className="font-medium text-slate-700">{t.items(noteLines.length)}</p>
+            <ul className="mt-2 space-y-1 text-slate-600">
+              {noteLines.map((l, i) => <li key={i}>📦 {l}</li>)}
+            </ul>
+          </div>
+        )}
         {(job.do_items?.length ?? 0) > 0 && <details className="rounded-xl bg-slate-50 px-3 py-2 text-sm">
           <summary className="cursor-pointer font-medium text-slate-700">{t.items(job.do_items?.length ?? 0)}</summary>
           <ul className="mt-2 space-y-1">

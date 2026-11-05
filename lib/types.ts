@@ -111,6 +111,7 @@ export type DeliveryOrder = {
   created_at: string; // when it came into the system (AutoCount sync or keyed in)
   special_reason: string | null; // special orders: why it was keyed in (lib/special.ts)
   refer_do?: string | null; // Kurang Hantar: the DO it makes up for, typed by the office
+  item_note?: string | null; // M- DOs: items typed by the office, one per line (lib/item-note.ts); syncs never touch it
   print_count: number; // times the special order sheet was printed; > 0 = only admins / sdo_goods may edit
   printed_at: string | null;
   printed_by: string | null;

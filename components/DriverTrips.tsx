@@ -12,6 +12,7 @@ import { doMatches } from "@/lib/search";
 import { dayDmy } from "@/lib/date-range";
 import { SearchIcon } from "./Icons";
 import { TIME_SLOTS, type DeliveryOrder, type DoStatus } from "@/lib/types";
+import { itemNoteLines } from "@/lib/item-note";
 
 type Driver = { id: string; full_name: string; real_name?: string | null; branch: string | null; lorry_no: string | null };
 /** Delivered DOs in the shown dates (by delivery time), with points and commission. */
@@ -210,9 +211,11 @@ export function DriverTrips({
                 {j.time_slot && <p className="text-sky-700">🕒 Estimated {TIME_SLOTS[j.time_slot]}</p>}
                 {j.remarks && <p className="line-clamp-2 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">{j.remarks}</p>}
                 <div className="flex items-center justify-between gap-2 text-slate-400">
-                  <span className="whitespace-nowrap">{j.do_items?.length ?? 0} items</span>
+                  <span className="whitespace-nowrap">{j.do_items?.length || itemNoteLines(j.item_note).length} items</span>
                 </div>
                 {j.instructions && <p className="line-clamp-2 rounded bg-violet-50 px-1.5 py-0.5 text-violet-800">📋 {j.instructions}</p>}
+                {/* M- DOs: the items the office typed (AutoCount sends none for invoices). */}
+                {j.item_note && <p className="line-clamp-3 whitespace-pre-line rounded bg-slate-50 px-1.5 py-0.5 text-slate-700">📦 {j.item_note}</p>}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <PointsEditor job={j} extraStop={extraStops.has(j.id)} canEdit={canEditPoints} onEditing={(on) => setEditingPoints(on ? j.id : null)} />
                   <BranchTags job={j} />

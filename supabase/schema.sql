@@ -188,6 +188,7 @@ create table public.delivery_orders (
   -- Special orders (GP first, see lib/special.ts): why it was keyed in; printed/void state.
   special_reason text check (special_reason in ('ambil_barang', 'tumpang_barang', 'stock_transfer', 'system_down', 'other', 'ambil_give_do')),
   refer_do       text check (length(refer_do) <= 40), -- Kurang Hantar: the DO it makes up for (typed on the form)
+  item_note      text check (length(item_note) <= 1000), -- M- DOs: items the office typed, one per line (AutoCount sends none; syncs never touch it)
   print_count    int not null default 0,       -- times printed; > 0 = only admins / sdo_goods edit (guard_special_order)
   printed_at     timestamptz,                  -- first print
   printed_by     uuid references public.profiles on delete set null,

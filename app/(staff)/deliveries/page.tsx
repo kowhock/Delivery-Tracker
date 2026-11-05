@@ -17,6 +17,8 @@ import { Redeliver } from "@/components/Redeliver";
 import { LinkSpecialDo } from "@/components/LinkSpecialDo";
 import { SPECIAL_REASONS, canEditSpecial, canPrintSpecial, isGoodsReason, isSpecialReason } from "@/lib/special";
 import { NavForm, NavLink, NavSelect, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
+import { ItemNote } from "@/components/ItemNote";
+import { canEditItemNote, isIcbDo } from "@/lib/item-note";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
   pending: "bg-slate-400",
@@ -359,6 +361,8 @@ export default async function DeliveriesPage({
                         {mapAddress(j) && <p className="text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
+                        {/* M- DOs: AutoCount sends no items for invoices, so the office types them. */}
+                        {isIcbDo(j.do_no) && <ItemNote key={j.item_note ?? ""} doId={j.id} note={j.item_note ?? null} canEdit={canEditItemNote(j, profile)} />}
                         {!j.is_oc && (j.started_at || (j.status === "delivered" && j.delivered_at)) && (
                           <p className="text-xs font-medium text-slate-600">
                             ⏱ {j.started_at && `Out ${fmtTime(j.started_at)}`}
