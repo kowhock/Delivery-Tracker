@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { saveItemNote } from "@/app/actions";
 import { ITEM_NOTE_MAX, itemNoteLines } from "@/lib/item-note";
+import { useStaffT } from "@/components/StaffLang";
 
 /**
  * M- DOs: the items the office typed, one per line ("Cement x 1 bag"); AutoCount sends none for
@@ -13,6 +14,7 @@ export function ItemNote({ doId, note, canEdit }: { doId: string; note: string |
   const [text, setText] = useState(note ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const t = useStaffT();
   const lines = itemNoteLines(note);
 
   if (editing) {
@@ -24,9 +26,9 @@ export function ItemNote({ doId, note, canEdit }: { doId: string; note: string |
           maxLength={ITEM_NOTE_MAX}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={"One item per line, e.g.\nCement x 1 bag\nBRC A6 x 2 pcs"}
+          placeholder={t.itemNote.placeholder}
           className="input text-xs"
-          aria-label="Items"
+          aria-label={t.itemNote.aria}
         />
         {error && <p className="text-xs text-rose-600">{error}</p>}
         <div className="flex gap-1.5">
@@ -35,14 +37,14 @@ export function ItemNote({ doId, note, canEdit }: { doId: string; note: string |
             onClick={() =>
               start(async () => {
                 setError(null);
-                const res = await saveItemNote(doId, text).catch(() => ({ error: "Couldn't save — try again." }));
+                const res = await saveItemNote(doId, text).catch(() => ({ error: t.couldntSave }));
                 if (res?.error) setError(res.error);
                 else setEditing(false);
               })
             }
             className="btn-primary px-3 py-1 text-xs disabled:opacity-50"
           >
-            {pending ? "Saving…" : "Save items"}
+            {pending ? t.saving : t.itemNote.save}
           </button>
           <button
             disabled={pending}
@@ -53,7 +55,7 @@ export function ItemNote({ doId, note, canEdit }: { doId: string; note: string |
             }}
             className="btn-secondary px-3 py-1 text-xs"
           >
-            Cancel
+            {t.cancel}
           </button>
         </div>
       </div>
@@ -76,7 +78,7 @@ export function ItemNote({ doId, note, canEdit }: { doId: string; note: string |
           }}
           className={`font-medium text-brand-700 hover:underline ${lines.length ? "mt-1" : ""}`}
         >
-          {lines.length ? "Edit items" : "+ Add items"}
+          {lines.length ? t.itemNote.edit : t.itemNote.add}
         </button>
       )}
     </div>

@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { assignDriver } from "@/app/actions";
 import { driverLabel } from "@/lib/format";
+import { useStaffT } from "@/components/StaffLang";
 
 /** Pick a driver, "O/C" when the customer collects at the store, or "Supplier delivery" when the supplier delivers it. */
 export function AssignDriver({
@@ -11,7 +12,7 @@ export function AssignDriver({
   isOc = false,
   isSupplier = false,
   drivers,
-  driverName = "Current driver",
+  driverName,
 }: {
   doId: string;
   driverId: string | null;
@@ -21,9 +22,10 @@ export function AssignDriver({
   drivers: { id: string; full_name: string; lorry_no: string | null }[];
 }) {
   const [pending, start] = useTransition();
+  const t = useStaffT();
   // Keep the current driver pickable even when they're not in the list (e.g. another branch's driver),
   // otherwise the select falls back to "Choose driver…" and can't be changed back to unassigned.
-  const current = driverId && !drivers.some((d) => d.id === driverId) ? driverName : null;
+  const current = driverId && !drivers.some((d) => d.id === driverId) ? (driverName ?? t.assign.current) : null;
   return (
     <select
       disabled={pending}
@@ -36,13 +38,13 @@ export function AssignDriver({
       }}
       className="input py-1.5 text-xs"
     >
-      <option value="">Choose driver…</option>
+      <option value="">{t.assign.choose}</option>
       {current && <option value={driverId!}>{current}</option>}
       {drivers.map((d) => (
         <option key={d.id} value={d.id}>{driverLabel(d)}</option>
       ))}
-      <option value="oc">O/C (customer collects)</option>
-      <option value="supplier">Supplier delivery</option>
+      <option value="oc">{t.assign.oc}</option>
+      <option value="supplier">{t.assign.supplier}</option>
     </select>
   );
 }

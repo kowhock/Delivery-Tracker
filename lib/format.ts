@@ -113,12 +113,12 @@ export function addDays(d: string, n: number): string {
 }
 
 /** "Today · 7 Oct", "Tomorrow · 8 Oct", "Fri · 9 Oct". */
-export function dayLabel(d: string, today: string): string {
+export function dayLabel(d: string, today: string, words = { today: "Today", tomorrow: "Tomorrow" }, locale = "en-MY"): string {
   const t = new Date(d + "T00:00:00Z");
-  const short = t.toLocaleDateString("en-MY", { day: "numeric", month: "short", timeZone: "UTC" });
-  if (d === today) return `Today · ${short}`;
-  if (d === addDays(today, 1)) return `Tomorrow · ${short}`;
-  return `${t.toLocaleDateString("en-MY", { weekday: "short", timeZone: "UTC" })} · ${short}`;
+  const short = t.toLocaleDateString(locale, { day: "numeric", month: "short", timeZone: "UTC" });
+  if (d === today) return `${words.today} · ${short}`;
+  if (d === addDays(today, 1)) return `${words.tomorrow} · ${short}`;
+  return `${t.toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" })} · ${short}`;
 }
 
 /** A time typed on the trip form → "HH:MM" (24h), or null: "14:30", "1430", "2.30pm", "2:30 PM", "9am". */

@@ -139,6 +139,10 @@ What the IPS AutoCount API doesn't send (asked for; the app fills them in once i
 ## Things to customise
 
 - WhatsApp message wording: `lib/whatsapp.ts`
+- Staff screens in English or 中文 (EN / 中文 toggle in the top bar, remembered per device): the words are in
+  `lib/i18n-staff.ts`. So far: top bar and navigation, Deliveries and Driver status. Only the screens' own words change —
+  customer names, addresses, remarks, items, special order reasons, DO / SO numbers and printed documents stay as they are.
+  The driver app's EN / BM words are separate: `lib/i18n.ts`.
 - Failure reasons for drivers: `FAIL_REASONS` in `components/JobCard.tsx`
 - Accent colour: `--color-brand-*` in `app/globals.css`
 - Special DO numbering (`SDO-000001`): the `do_no` default in `supabase/schema.sql`

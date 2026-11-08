@@ -4,14 +4,16 @@ import { useState, useTransition } from "react";
 import { moveToDate, setTimeSlot } from "@/app/actions";
 import { TIME_SLOTS, type TimeSlot } from "@/lib/types";
 import { addDays, dayLabel } from "@/lib/format";
+import type { StaffDict } from "@/lib/i18n-staff";
+import { useStaffT } from "@/components/StaffLang";
 
 const QUICK_DAYS = [0, 1, 2]; // today, tomorrow, the day after
 
 /** Today, tomorrow, the day after — plus the DO's own date when it's none of those (e.g. late). */
-function dayOptions(today: string, current?: string) {
+function dayOptions(today: string, t: StaffDict, current?: string) {
   const days = QUICK_DAYS.map((n) => addDays(today, n));
   if (current && !days.includes(current)) days.unshift(current);
-  return days.map((d) => ({ value: d, label: dayLabel(d, today) + (d < today ? " (late)" : "") }));
+  return days.map((d) => ({ value: d, label: dayLabel(d, today, t.day, t.locale) + (d < today ? t.day.late : "") }));
 }
 
 /** A day dropdown with "Pick a date…" that swaps to a calendar input. */
@@ -29,6 +31,7 @@ function DayPicker({
   className?: string;
 }) {
   const [picking, setPicking] = useState(false);
+  const t = useStaffT();
   if (picking) {
     return (
       <input
@@ -37,7 +40,7 @@ function DayPicker({
         min={today}
         defaultValue={value}
         disabled={disabled}
-        aria-label="Delivery date"
+        aria-label={t.day.label}
         onChange={(e) => e.target.value && e.target.value >= today && onPick(e.target.value)}
         onBlur={() => setPicking(false)}
         className={`input py-1.5 text-xs ${className}`}
@@ -49,16 +52,16 @@ function DayPicker({
       key={value}
       disabled={disabled}
       defaultValue={value ?? ""}
-      aria-label="Delivery date"
+      aria-label={t.day.label}
       onChange={(e) => (e.target.value === "pick" ? setPicking(true) : e.target.value && onPick(e.target.value))}
       className={`input py-1.5 text-xs ${className}`}
     >
-      {dayOptions(today, value).map((o) => (
+      {dayOptions(today, t, value).map((o) => (
         <option key={o.value} value={o.value} disabled={o.value < today}>
           📅 {o.label}
         </option>
       ))}
-      <option value="pick">📅 Pick a date…</option>
+      <option value="pick">{t.day.pick}</option>
     </select>
   );
 }
@@ -80,19 +83,20 @@ export function DoDate({ doId, date, today }: { doId: string; date: string; toda
 /** One DO's optional estimated delivery window. */
 export function DoTimeSlot({ doId, slot }: { doId: string; slot: TimeSlot | null }) {
   const [pending, start] = useTransition();
+  const t = useStaffT();
   return (
     <select
       key={slot ?? ""}
       disabled={pending}
       defaultValue={slot ?? ""}
-      aria-label="Estimated time"
+      aria-label={t.day.timeLabel}
       onChange={(e) => start(async () => void (await setTimeSlot(doId, e.target.value || null)))}
       className="input w-full py-1.5 text-xs"
     >
-      <option value="">🕒 No time estimate</option>
+      <option value="">{t.day.noTime}</option>
       {Object.entries(TIME_SLOTS).map(([v, label]) => (
         <option key={v} value={v}>
-          🕒 Estimated {label}
+          {t.day.timeOption(label)}
         </option>
       ))}
     </select>

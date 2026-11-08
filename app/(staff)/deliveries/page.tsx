@@ -3,7 +3,8 @@ import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
-import { DO_STATUSES, DO_STATUS_LABEL, TIME_SLOTS, todoLabel, type DeliveryOrder, type DoStatus, type Profile } from "@/lib/types";
+import { DO_STATUSES, TIME_SLOTS, type DeliveryOrder, type DoStatus, type Outstanding, type Profile } from "@/lib/types";
+import { getStaffT } from "@/lib/staff-lang";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { SyncAge } from "@/components/SyncAge";
@@ -30,15 +31,15 @@ const COLUMN_DOT: Record<DoStatus, string> = {
 
 // Failed DOs only show under their own filter, so the other columns get the room.
 const DELIVERY_FILTERS = {
-  "": { label: "All", statuses: DO_STATUSES.filter((s) => s !== "failed") },
-  undelivered: { label: "Not delivered", statuses: DO_STATUSES.filter((s) => s !== "delivered" && s !== "failed") },
-  delivered: { label: "Delivered", statuses: ["delivered"] as DoStatus[] },
-  failed: { label: "Failed", statuses: ["failed"] as DoStatus[] },
+  "": { statuses: DO_STATUSES.filter((s) => s !== "failed") },
+  undelivered: { statuses: DO_STATUSES.filter((s) => s !== "delivered" && s !== "failed") },
+  delivered: { statuses: ["delivered"] as DoStatus[] },
+  failed: { statuses: ["failed"] as DoStatus[] },
 };
 type DeliveryFilter = keyof typeof DELIVERY_FILTERS;
 
-// "Also show": DOs our drivers don't deliver, hidden unless picked.
-const EXTRAS = { "": "Deliveries", oc: "+ O/C", supplier: "+ Supplier" };
+// "Also show": DOs our drivers don't deliver, hidden unless picked. Labels: t.deliveries.extras.
+const EXTRAS = { "": true, oc: true, supplier: true };
 type Extra = keyof typeof EXTRAS;
 
 const PAGE = 300; // DOs loaded at a time
@@ -88,6 +89,11 @@ export default async function DeliveriesPage({
   // Cross-branch: DOs this branch sold that another branch is delivering.
   const crossOnly = sp.xb === "1";
   const { supabase, user, profile } = await requireStaff();
+  const { t } = await getStaffT();
+  const T = t.deliveries;
+  const date = (d: string) => fmtDate(d, t.locale);
+  // What's outstanding: a typed "other" to-do stays as typed; the fixed ones are translated.
+  const todoText = (o: Pick<Outstanding, "todo" | "todo_other">) => (o.todo === "other" && o.todo_other ? o.todo_other : t.todo[o.todo]);
   // Opens on the user's own branch, like Driver status. Dispatchers can't switch away from theirs.
   const locked = lockedBranches(profile);
   const pickedBranch = pageBranch(sp.branch, profile);
@@ -148,11 +154,11 @@ export default async function DeliveriesPage({
 
   // O/C and Supplier delivery DOs get columns of their own (not Unassigned); O/C still to collect first, collected ones below.
   const columns = [
-    ...statuses.map((s) => ({ key: s, label: DO_STATUS_LABEL[s], dot: COLUMN_DOT[s], jobs: jobs.filter((j) => !j.is_oc && !j.supplier_delivery && j.status === s) })),
+    ...statuses.map((s) => ({ key: s, label: t.status[s], dot: COLUMN_DOT[s], jobs: jobs.filter((j) => !j.is_oc && !j.supplier_delivery && j.status === s) })),
     ...(showOc
       ? [{ key: "oc", label: "O/C", dot: "bg-violet-500", jobs: jobs.filter((j) => j.is_oc).sort((a, b) => Number(a.status === "delivered") - Number(b.status === "delivered")) }]
       : []),
-    ...(showSupplier ? [{ key: "supplier", label: "Supplier delivery", dot: "bg-teal-500", jobs: jobs.filter((j) => j.supplier_delivery) }] : []),
+    ...(showSupplier ? [{ key: "supplier", label: T.supplierDelivery, dot: "bg-teal-500", jobs: jobs.filter((j) => j.supplier_delivery) }] : []),
   ];
 
   const isToday = from === today && to === today;
@@ -169,15 +175,15 @@ export default async function DeliveriesPage({
   const dateParams = isToday ? {} : { from, to };
   const hidden = (params: Record<string, string | undefined>) =>
     Object.entries(params).map(([k, v]) => v !== undefined && <input key={k} type="hidden" name={k} value={v} />);
-  const rangeLabel = (term ? `Matching "${term}" · ` : "") + (isToday
-      ? `Today, ${fmtDate(today)}`
+  const rangeLabel = (term ? `${T.matching(term)} · ` : "") + (isToday
+      ? T.todayOn(date(today))
       : isThisWeek
-        ? `This week, ${fmtDate(weekFrom)} – ${fmtDate(weekTo)}`
+        ? T.thisWeekRange(date(weekFrom), date(weekTo))
         : isAllDates
-          ? "All dates"
-          : `${from ? fmtDate(from) : "…"} – ${to ? fmtDate(to) : "…"}`);
+          ? T.allDates
+          : `${from ? date(from) : "…"} – ${to ? date(to) : "…"}`);
   const branchLabel =
-    !branch ? (locked ? `${locked.join(" + ")} branches · ` : "All branches · ") : crossOnly ? `${branch} cross-branch (delivered by other branches) · ` : `${branch} branch · `;
+    (!branch ? (locked ? t.branchesOf(locked.join(" + ")) : t.allBranches) : crossOnly ? T.crossOf(branch) : t.branchOf(branch)) + " · ";
 
   return (
     <PendingNav>
@@ -193,17 +199,17 @@ export default async function DeliveriesPage({
       <RealtimeRefresh table="sync_status" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Deliveries</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{T.title}</h1>
           <p className="text-sm text-slate-500">
-            {branchLabel}{rangeLabel} · {done} of {total.toLocaleString()} delivered
+            {branchLabel}{rangeLabel} · {t.doneOf(done, total.toLocaleString())}
             {sync && <> · <SyncAge syncedAt={sync.synced_at} /></>}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {profile.role === "admin" && (
-            <Link href="/deliveries/special/access" className="text-sm font-medium text-slate-500 hover:text-slate-900">Admin access</Link>
+            <Link href="/deliveries/special/access" className="text-sm font-medium text-slate-500 hover:text-slate-900">{T.adminAccess}</Link>
           )}
-          <Link href="/deliveries/new" className="btn-primary">+ Special DO</Link>
+          <Link href="/deliveries/new" className="btn-primary">{T.newSpecial}</Link>
         </div>
       </div>
 
@@ -215,7 +221,7 @@ export default async function DeliveriesPage({
               href={href({ ...keep, show: value || undefined, ...dateParams, q: q || undefined })}
               className={`${TAB} ${show === value ? TAB_ON : TAB_OFF}`}
             >
-              {DELIVERY_FILTERS[value].label}
+              {T.filters[value]}
               {value === "failed" && !!failedCount && (
                 <span className="ml-1 rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold text-white">{failedCount}</span>
               )}
@@ -227,12 +233,12 @@ export default async function DeliveriesPage({
         <span className="flex rounded-lg bg-slate-100 p-0.5">
           <span className="relative">
             <NavSelect
-              aria-label="Also show"
-              title="Also show O/C and Supplier delivery DOs"
+              aria-label={T.alsoShow}
+              title={T.alsoShowTitle}
               value={extra}
               options={(Object.keys(EXTRAS) as Extra[]).map((value) => ({
                 value,
-                label: EXTRAS[value],
+                label: T.extras[value],
                 href: href({ ...keep, extra: value || undefined, ...dateParams, q: q || undefined }),
               }))}
               className={`cursor-pointer appearance-none rounded-md py-1 pl-2 pr-6 text-xs font-medium shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-brand-600 ${
@@ -249,32 +255,32 @@ export default async function DeliveriesPage({
           <NavLink
             href={href({ ...keep, xb: crossOnly ? undefined : "1", ...dateParams })}
             aria-pressed={crossOnly}
-            title={`DOs ${branch} sold that another branch is delivering`}
+            title={T.crossTitle(branch)}
             className={`${TAB} border ${crossOnly ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-500 hover:text-slate-900"}`}
           >
-            Cross-branch
+            {T.crossBranch}
           </NavLink>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
           <nav className="flex rounded-lg bg-slate-100 p-0.5">
-            <NavLink href={href(keep)} className={`${TAB} ${isToday ? TAB_ON : TAB_OFF}`}>Today</NavLink>
+            <NavLink href={href(keep)} className={`${TAB} ${isToday ? TAB_ON : TAB_OFF}`}>{t.today}</NavLink>
             <NavLink href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek ? TAB_ON : TAB_OFF}`}>
-              This week
+              {T.thisWeek}
             </NavLink>
             <NavLink href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates ? TAB_ON : TAB_OFF}`}>
-              All dates
+              {T.allDates}
             </NavLink>
           </nav>
           {/* Changing dates or branch starts a fresh look, so it drops any DO search. Both load as soon as they're picked. */}
           {(!locked || locked.length > 1) && (
             // Short labels keep the dropdown narrow, so the DO search fits on the same row.
             <NavSelect
-              aria-label="Branch"
-              title="Branch (★ = mine)"
+              aria-label={T.branch}
+              title={T.branchTitle}
               value={branch || "all"}
               options={[
-                { value: "all", label: "All", href: href({ ...keep, branch: "all", ...dateParams }) },
+                { value: "all", label: T.allShort, href: href({ ...keep, branch: "all", ...dateParams }) },
                 ...BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => ({
                   value: b.code,
                   label: `${b.code}${!locked && userBranches(profile.branch).includes(b.code) ? " ★" : ""}`,
@@ -294,11 +300,11 @@ export default async function DeliveriesPage({
           {hidden({ ...keep, ...(isToday ? {} : { from, to }) })}
           <label className="relative w-full lg:w-72">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <input name="q" type="search" defaultValue={q} placeholder="DO no., customer or address" aria-label="Search DO no., customer or address" className="input py-2 pl-9 pr-3 text-sm" />
+            <input name="q" type="search" defaultValue={q} placeholder={t.searchDo} aria-label={t.searchDoLabel} className="input py-2 pl-9 pr-3 text-sm" />
           </label>
           {q && (
             <NavLink href={href({ ...keep, ...dateParams })} className="whitespace-nowrap text-sm text-brand-700 hover:underline">
-              Clear
+              {t.clear}
             </NavLink>
           )}
         </NavForm>
@@ -335,61 +341,61 @@ export default async function DeliveriesPage({
                           </span>
                           <span className="flex items-center gap-2">
                             {j.source === "special" && !j.special_no && canEditSpecial(j, who) && PLANNABLE.includes(j.status) ? (
-                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Edit</Link>
+                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">{T.edit}</Link>
                             ) : j.source === "special" && (canPrintSpecial(j, who) || profile.role === "admin") ? (
-                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">Open</Link>
+                              <Link href={`/deliveries/special/${j.id}`} className="font-medium text-brand-700 hover:underline">{T.open}</Link>
                             ) : null}
                             <BranchTags job={j} />
                           </span>
                         </div>
-                        {j.is_oc && <p className="-mt-1.5 text-xs font-medium text-violet-600">O/C (customer collects)</p>}
+                        {j.is_oc && <p className="-mt-1.5 text-xs font-medium text-violet-600">{T.ocCollects}</p>}
                         {(j.links?.length || j.so_no) && (
                           <p className="-mt-1.5 text-xs text-slate-400">{j.links?.length ? j.links.map((l) => l.so_no).join(", ") : j.so_no}</p>
                         )}
                         {j.special_no ? (
-                          <p className="-mt-1.5 text-xs text-slate-400">🔗 Was special DO {j.special_no}</p>
+                          <p className="-mt-1.5 text-xs text-slate-400">{T.wasSpecial(j.special_no)}</p>
                         ) : j.source === "special" && (
                           <p className="-mt-1.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-400">
                             {j.voided_at && <span className="rounded bg-rose-600 px-1.5 font-bold text-white">VOID</span>}
                             Special{isSpecialReason(j.special_reason) && <span className="font-medium text-slate-600">· {SPECIAL_REASONS[j.special_reason]}</span>}
-                            {j.print_count > 0 && <span title="Printed">Printed</span>}
+                            {j.print_count > 0 && <span>{T.printed}</span>}
                             {/* AutoCount was down: once it has the real DO, link it so syncs update this one. Goods SDOs aren't AutoCount DOs. */}
                             {!j.voided_at && !isGoodsReason(j.special_reason) && (j.created_by === user.id || profile.role === "admin" || mine) && <LinkSpecialDo doId={j.id} doNo={j.do_no} />}
                           </p>
                         )}
                         <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
-                        {mapAddress(j) && <p className="text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
+                        {mapAddress(j) && <p className="text-xs text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? t.noAddress}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
                         {j.remarks && <p className="line-clamp-2 text-xs text-slate-500">📝 {j.remarks}</p>}
                         {j.instructions && <p className="line-clamp-2 text-xs text-slate-500">📋 {j.instructions}</p>}
                         {/* M- DOs: AutoCount sends no items for invoices, so the office types them. */}
                         {isIcbDo(j.do_no) && <ItemNote key={j.item_note ?? ""} doId={j.id} note={j.item_note ?? null} canEdit={canEditItemNote(j, profile)} />}
                         {!j.is_oc && (j.started_at || (j.status === "delivered" && j.delivered_at)) && (
                           <p className="text-xs font-medium text-slate-600">
-                            ⏱ {j.started_at && `Out ${fmtTime(j.started_at)}`}
+                            ⏱ {j.started_at && T.out(fmtTime(j.started_at))}
                             {j.started_at && j.status === "delivered" && j.delivered_at && " · "}
-                            {j.status === "delivered" && j.delivered_at && <span className="text-emerald-700">Delivered {fmtTime(j.delivered_at)}</span>}
+                            {j.status === "delivered" && j.delivered_at && <span className="text-emerald-700">{T.deliveredAt(fmtTime(j.delivered_at))}</span>}
                           </p>
                         )}
                         {j.status === "failed" ? (
                           <p className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
-                            ❌ <span className="font-medium">Failed</span> · {j.failed_reason || "no reason given"}
+                            ❌ <span className="font-medium">{T.failed}</span> · {j.failed_reason || T.noReason}
                           </p>
                         ) : (
                           // Redelivered: earlier failed tries (they still earned their points).
                           j.attempts?.map((a) => (
                             <p key={a.id} className="text-xs text-slate-400">
-                              ↻ Failed {fmtDateTime(a.failed_at)}{a.failed_reason && ` · ${a.failed_reason}`}
+                              {T.failedAt(fmtDateTime(a.failed_at))}{a.failed_reason && ` · ${a.failed_reason}`}
                             </p>
                           ))
                         )}
                         {open.map((o) => (
                           <p key={o.id} className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">
-                            ⚠ <span className="font-medium">{todoLabel(o)}</span> · {o.reason}
+                            ⚠ <span className="font-medium">{todoText(o)}</span> · {o.reason}
                           </p>
                         ))}
                         {j.supplier_delivery ? (
                           <div className="space-y-1.5">
-                            <p className="text-xs font-medium text-teal-700">Supplier delivery</p>
+                            <p className="text-xs font-medium text-teal-700">{T.supplierDelivery}</p>
                             {/* Picking a driver (or "Choose driver…") makes it our delivery again. */}
                             {mine && <AssignDriver key="supplier" doId={j.id} driverId={null} isSupplier drivers={driversFor(j)} />}
                           </div>
@@ -403,9 +409,9 @@ export default async function DeliveriesPage({
                           </div>
                         ) : j.is_oc ? (
                           <div className="space-y-0.5 text-xs text-slate-500">
-                            <p>{j.status === "delivered" ? <span className="font-medium text-emerald-700">✅ Collected {j.delivered_at && fmtDateTime(j.delivered_at)}</span> : "🏬 Waiting for customer to collect"}</p>
-                            <p className={late ? "text-rose-600" : ""}>📅 {fmtDate(j.delivery_date)}{late && " · late"}</p>
-                            <p className="text-slate-400">{branchName(j.branch)} ({j.branch}) handles this O/C</p>
+                            <p>{j.status === "delivered" ? <span className="font-medium text-emerald-700">{T.collectedAt(j.delivered_at ? fmtDateTime(j.delivered_at) : "")}</span> : T.waitingCollect}</p>
+                            <p className={late ? "text-rose-600" : ""}>📅 {date(j.delivery_date)}{late && T.late}</p>
+                            <p className="text-slate-400">{T.handlesOc(branchName(j.branch), j.branch ?? "")}</p>
                           </div>
                         ) : plannable ? (
                           <div className="space-y-1.5">
@@ -416,12 +422,12 @@ export default async function DeliveriesPage({
                           </div>
                         ) : (
                           <div className="space-y-0.5 text-xs text-slate-500">
-                            <p>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? "O/C (customer collects)" : "No driver yet"}</p>
-                            <p className={late ? "text-rose-600" : ""}>📅 {fmtDate(j.delivery_date)}{late && " · late"}</p>
-                            {j.time_slot && <p>🕒 Estimated {TIME_SLOTS[j.time_slot]}</p>}
+                            <p>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</p>
+                            <p className={late ? "text-rose-600" : ""}>📅 {date(j.delivery_date)}{late && T.late}</p>
+                            {j.time_slot && <p>🕒 {t.estimated(TIME_SLOTS[j.time_slot])}</p>}
                             {!mine && (
                               <p className="text-slate-400">
-                                {branchName(j.branch)} ({j.branch}) is delivering this DO{j.helper_branch && ` · ${branchName(j.helper_branch)} delivers`}
+                                {T.deliveringBy(branchName(j.branch), j.branch ?? "")}{j.helper_branch && T.helperDelivers(branchName(j.helper_branch))}
                               </p>
                             )}
                           </div>
@@ -429,7 +435,7 @@ export default async function DeliveriesPage({
                       </article>
                     );
                   })}
-                  {col.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-400">Nothing here</p>}
+                  {col.length === 0 && <p className="px-2 py-6 text-center text-xs text-slate-400">{T.nothingHere}</p>}
                 </div>
               </section>
             );
@@ -438,7 +444,7 @@ export default async function DeliveriesPage({
 
       {capped && (
         <p className="pb-4 text-center text-sm text-slate-500">
-          Showing newest {jobs.length.toLocaleString()} of {total.toLocaleString()} DOs
+          {T.showingNewest(jobs.length.toLocaleString(), total.toLocaleString())}
           {limit < MAX_LOADED ? (
             <>
               {" · "}
@@ -447,11 +453,11 @@ export default async function DeliveriesPage({
                 scroll={false}
                 className="font-medium text-brand-700 hover:underline"
               >
-                Load {Math.min(PAGE, total - jobs.length)} more
+                {T.loadMore(Math.min(PAGE, total - jobs.length))}
               </NavLink>
             </>
           ) : (
-            " · narrow the dates to see older ones"
+            T.narrowDates
           )}
         </p>
       )}

@@ -12,6 +12,7 @@ import { withStartedAt } from "@/lib/delivery-times";
 import { failedAttempts } from "@/lib/attempts";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { getStaffT } from "@/lib/staff-lang";
 
 const MAX_DAYS = 31;
 
@@ -22,6 +23,8 @@ export default async function DriversPage({
 }) {
   const sp = await searchParams;
   const { supabase, profile } = await requireStaff();
+  const { t } = await getStaffT();
+  const T = t.drivers;
 
   const today = todayMY();
   const from = sp.from || today;
@@ -86,19 +89,19 @@ export default async function DriversPage({
       <RealtimeRefresh table="delivery_orders" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Driver status</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{T.title}</h1>
           <p className="text-sm text-slate-500">
-            {branch ? `${branch} branch · ` : locked ? `${locked.join(" + ")} branches · ` : branches.length ? "All branches · " : ""}
-            {done} of {jobs.length} delivered
+            {branch ? `${t.branchOf(branch)} · ` : locked ? `${t.branchesOf(locked.join(" + "))} · ` : branches.length ? `${t.allBranches} · ` : ""}
+            {t.doneOf(done, jobs.length)}
           </p>
           {mapsEnabled() && <div className="mt-2"><CalculatePointsButton ids={missingPoints} /></div>}
         </div>
         <form className="flex flex-wrap items-center gap-2">
           {branches.length > 1 && (!locked || locked.length > 1) && (
             <select name="branch" defaultValue={branch || "all"} className="input w-auto">
-              <option value="all">{locked ? "All my branches" : "All branches"}</option>
+              <option value="all">{locked ? T.allMine : t.allBranches}</option>
               {branches.map((b) => (
-                <option key={b} value={b}>{b}{!locked && userBranches(profile.branch).includes(b) ? " (mine)" : ""}</option>
+                <option key={b} value={b}>{b}{!locked && userBranches(profile.branch).includes(b) ? T.mine : ""}</option>
               ))}
             </select>
           )}
@@ -108,19 +111,19 @@ export default async function DriversPage({
             aria-current={from === today && to === today ? "date" : undefined}
             className={`text-sm font-medium ${from === today && to === today ? "text-slate-900" : "text-brand-700 hover:underline"}`}
           >
-            Today
+            {t.today}
           </Link>
           <DateRangePicker key={`${from}|${to}`} from={from} to={to} today={today} max={MAX_DAYS} />
-          <button className="btn-secondary">Go</button>
+          <button className="btn-secondary">{t.go}</button>
         </form>
       </div>
       {dates[dates.length - 1] < to && (
-        <p className="text-sm text-amber-700">Showing the first {MAX_DAYS} days only — pick a shorter range to see the rest.</p>
+        <p className="text-sm text-amber-700">{T.firstDays(MAX_DAYS)}</p>
       )}
 
       {drivers.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">
-          No drivers {branch ? `in ${branch} branch` : "yet"}. Set a driver&apos;s branch in Supabase (<code>profiles.branch</code>).
+          {T.noDrivers(branch || null)} (<code>profiles.branch</code>).
         </div>
       ) : (
         <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} canEditPoints={canEditPoints(profile)} />

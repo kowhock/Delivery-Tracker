@@ -3,9 +3,12 @@ import { requireStaff } from "@/lib/auth";
 import { signOut } from "../actions";
 import { NavLinks } from "@/components/NavLinks";
 import { deliveredOrSoldBy, lockedBranches } from "@/lib/branches";
+import { getStaffT } from "@/lib/staff-lang";
+import { StaffLangProvider, StaffLangToggle } from "@/components/StaffLang";
 
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
   const { supabase, profile } = await requireStaff();
+  const { lang, t } = await getStaffT();
   // Badge on the Outstanding tab: not cleared yet (dispatchers: their branch's DOs only).
   const locked = lockedBranches(profile);
   let open = supabase.from("do_outstanding").select("id, delivery:delivery_orders!inner(id)", { count: "exact", head: true }).is("cleared_at", null);
@@ -13,6 +16,7 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   const { count: outstanding } = await open;
 
   return (
+    <StaffLangProvider lang={lang}>
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/80 backdrop-blur print:hidden">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4">
@@ -23,15 +27,17 @@ export default async function StaffLayout({ children }: { children: React.ReactN
           <NavLinks role={profile.role} outstanding={outstanding ?? 0} />
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-slate-500 md:inline">
-              {profile.full_name} · <span className="capitalize">{profile.role}</span>
+              {profile.full_name} · <span className="capitalize">{t.role[profile.role] ?? profile.role}</span>
             </span>
+            <StaffLangToggle />
             <form action={signOut}>
-              <button className="text-sm font-medium text-slate-500 hover:text-slate-900">Sign out</button>
+              <button className="text-sm font-medium text-slate-500 hover:text-slate-900">{t.signOut}</button>
             </form>
           </div>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 print:max-w-none print:p-0">{children}</main>
     </div>
+    </StaffLangProvider>
   );
 }

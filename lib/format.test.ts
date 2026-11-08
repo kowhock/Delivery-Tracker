@@ -56,6 +56,9 @@ describe("dates", () => {
     expect(dayLabel("2026-10-27", "2026-10-27")).toMatch(/^Today · 27 Oct$/);
     expect(dayLabel("2026-10-28", "2026-10-27")).toMatch(/^Tomorrow · 28 Oct$/);
     expect(dayLabel("2026-10-30", "2026-10-27")).toMatch(/^Fri · 30 Oct$/);
+    // Staff screens in Chinese pass their own words and locale.
+    expect(dayLabel("2026-10-27", "2026-10-27", { today: "今天", tomorrow: "明天" }, "zh-CN")).toBe("今天 · 10月27日");
+    expect(dayLabel("2026-10-30", "2026-10-27", { today: "今天", tomorrow: "明天" }, "zh-CN")).toBe("周五 · 10月30日");
   });
 });
 

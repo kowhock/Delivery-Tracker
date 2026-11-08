@@ -4,9 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { addDays } from "@/lib/format";
 import { dmy, monthGrid, monthRange, orderRange } from "@/lib/date-range";
 import { CalendarIcon } from "./Icons";
-
-const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+import { useStaffT } from "./StaffLang";
 
 /**
  * From–To picker for a form (sends `from` and `to` as YYYY-MM-DD). Shown as day/month/year.
@@ -29,6 +27,8 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
   const [dragging, setDragging] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const t = useStaffT();
+  const R = t.range;
 
   // Close when clicking outside or pressing Escape.
   useEffect(() => {
@@ -67,10 +67,10 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
   const capped = !!anchor && !!hover && orderRange(anchor, hover, max)[1] !== (anchor <= hover ? hover : anchor);
 
   const presets: [string, [string, string]][] = [
-    ["Today", [today, today]],
-    ["Yesterday", [addDays(today, -1), addDays(today, -1)]],
-    ["This month", monthRange(today)],
-    ["Last month", monthRange(today, -1)],
+    [R.today, [today, today]],
+    [R.yesterday, [addDays(today, -1), addDays(today, -1)]],
+    [R.thisMonth, monthRange(today)],
+    [R.lastMonth, monthRange(today, -1)],
   ];
 
   return (
@@ -85,16 +85,16 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
         aria-expanded={open}
       >
         <CalendarIcon className={`shrink-0 text-slate-500 ${small ? "size-3.5" : "size-4"}`} />
-        {!range[0] && !range[1] ? "All dates" : range[0] === range[1] ? dmy(range[0]) : `${range[0] ? dmy(range[0]) : "…"} – ${range[1] ? dmy(range[1]) : "…"}`}
+        {!range[0] && !range[1] ? R.allDates : range[0] === range[1] ? dmy(range[0]) : `${range[0] ? dmy(range[0]) : "…"} – ${range[1] ? dmy(range[1]) : "…"}`}
       </button>
 
       {open && (
-        <div role="dialog" aria-label="Pick dates" className={`absolute ${align === "left" ? "left-0" : "right-0"} z-30 mt-2 w-[18.5rem] rounded-xl border border-slate-200 bg-white text-sm shadow-lg`}>
+        <div role="dialog" aria-label={R.pick} className={`absolute ${align === "left" ? "left-0" : "right-0"} z-30 mt-2 w-[18.5rem] rounded-xl border border-slate-200 bg-white text-sm shadow-lg`}>
           {/* Month */}
           <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-            <button type="button" onClick={() => shift(-1)} className="flex size-8 items-center justify-center rounded-md text-lg text-slate-600 hover:bg-slate-100" aria-label="Previous month">‹</button>
-            <span className="text-sm font-semibold">{MONTHS[m - 1]} {y}</span>
-            <button type="button" onClick={() => shift(1)} className="flex size-8 items-center justify-center rounded-md text-lg text-slate-600 hover:bg-slate-100" aria-label="Next month">›</button>
+            <button type="button" onClick={() => shift(-1)} className="flex size-8 items-center justify-center rounded-md text-lg text-slate-600 hover:bg-slate-100" aria-label={R.prev}>‹</button>
+            <span className="text-sm font-semibold">{R.month(y, m)}</span>
+            <button type="button" onClick={() => shift(1)} className="flex size-8 items-center justify-center rounded-md text-lg text-slate-600 hover:bg-slate-100" aria-label={R.next}>›</button>
           </div>
 
           {/* Days: press and drag, or click the first and last day */}
@@ -113,7 +113,7 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
               if (d !== anchor) apply(orderRange(anchor, d, max));
             }}
           >
-            {WEEKDAYS.map((w) => (
+            {R.weekdays.map((w) => (
               <span key={w} className="pb-1 text-[11px] font-medium uppercase text-slate-400">{w}</span>
             ))}
             {monthGrid(y, m).map((d, i) => {
@@ -154,7 +154,7 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
             })}
           </div>
 
-          {capped && max && <p className="px-3 pb-2 text-xs text-amber-700">Up to {max} days at a time.</p>}
+          {capped && max && <p className="px-3 pb-2 text-xs text-amber-700">{R.upTo(max)}</p>}
 
           {/* Quick picks */}
           <div className="grid grid-cols-4 gap-1 border-t border-slate-100 p-2">

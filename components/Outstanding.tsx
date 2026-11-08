@@ -6,12 +6,14 @@ import { createPortal } from "react-dom";
 import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrls } from "@/app/actions";
 import { fmtDate, fmtDateTime, fmtQty } from "@/lib/format";
 import { HandOver, type HandOverInfo } from "@/components/HandOver";
-import { EVENT_LABEL, TODO_LABEL, todoLabel, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent } from "@/lib/types";
+import { useStaffT } from "@/components/StaffLang";
+import { EVENT_LABEL, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent, type DoStatus } from "@/lib/types";
 
 /** Green "Clear" button: marks an outstanding item as done. */
 export function ClearButton({ id }: { id: string }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState(false);
+  const t = useStaffT();
   return (
     <button
       type="button"
@@ -25,10 +27,10 @@ export function ClearButton({ id }: { id: string }) {
           }
         })
       }
-      title={error ? "Couldn't clear — try again" : undefined}
+      title={error ? t.popup.couldntClear : undefined}
       className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
     >
-      {pending ? "Clearing…" : error ? "Retry" : "Clear"}
+      {pending ? t.popup.clearing : error ? t.popup.retry : t.clear}
     </button>
   );
 }
@@ -72,6 +74,8 @@ export function DoOutstanding({
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [adding, setAdding] = useState(false);
+  const t = useStaffT();
+  const P = t.popup;
 
   async function show() {
     setOpen(true);
@@ -94,9 +98,9 @@ export function DoOutstanding({
 
   return (
     <>
-      <button type="button" onClick={show} className="hover:text-brand-700 hover:underline" title={photo ? "See items, delivery photo / add remark" : "See items / add remark"}>
+      <button type="button" onClick={show} className="hover:text-brand-700 hover:underline" title={photo ? P.titlePhoto : P.title}>
         {doNo}
-        {photo && <span className="ml-1" aria-label="has delivery photo">📷</span>}
+        {photo && <span className="ml-1" aria-label={P.hasPhoto}>📷</span>}
       </button>
       {/* Portalled to <body> so the popup isn't nested inside the card's markup. */}
       {isOpen &&
@@ -113,18 +117,18 @@ export function DoOutstanding({
                 <h2 className="text-lg font-semibold tracking-tight">{doNo}</h2>
                 {customer && <p className="text-slate-600">{customer}</p>}
                 {docDate ? (
-                  <p className="text-xs text-slate-400">Doc date {fmtDate(docDate)}</p>
+                  <p className="text-xs text-slate-400">{P.docDate(fmtDate(docDate, t.locale))}</p>
                 ) : (
-                  createdAt && <p className="text-xs text-slate-400">Created {fmtDate(createdAt)}</p>
+                  createdAt && <p className="text-xs text-slate-400">{P.created(fmtDate(createdAt, t.locale))}</p>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 {print && (
-                  <Link href={`/deliveries/special/${doId}/print`} className="btn-primary px-3 py-1.5 text-sm" title={print.printed ? "Print again (marked REPRINT)" : "Print as a Delivery Order"}>
-                    {print.printed ? "Reprint" : "Print"}
+                  <Link href={`/deliveries/special/${doId}/print`} className="btn-primary px-3 py-1.5 text-sm" title={print.printed ? P.reprintTitle : P.printTitle}>
+                    {print.printed ? P.reprint : P.print}
                   </Link>
                 )}
-                <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
+                <button type="button" onClick={() => dialog.current?.close()} aria-label={t.close} className="text-xl leading-none text-slate-400 hover:text-slate-900">
                   ×
                 </button>
               </div>
@@ -134,26 +138,26 @@ export function DoOutstanding({
               {open.length > 0 && <OpenList open={open} />}
               {photo && (
                 <div>
-                  <h3 className="mb-1 font-semibold">Proof of delivery{photoUrls.length > 1 && ` · ${photoUrls.length} photos`}</h3>
+                  <h3 className="mb-1 font-semibold">{P.pod}{photoUrls.length > 1 && P.photos(photoUrls.length)}</h3>
                   {photoUrls.length ? (
                     <div className="space-y-2">
                       {photoUrls.map((url, i) => (
-                        <a key={url} href={url} target="_blank" rel="noreferrer" title="Open full size" className="block">
+                        <a key={url} href={url} target="_blank" rel="noreferrer" title={P.openFull} className="block">
                           {/* eslint-disable-next-line @next/next/no-img-element -- signed Supabase link, not a static asset */}
-                          <img src={url} alt={`Delivery photo ${i + 1} for ${doNo}`} loading="lazy" className="max-h-80 w-full rounded-xl border border-slate-100 object-contain" />
+                          <img src={url} alt={P.photoAlt(i + 1, doNo)} loading="lazy" className="max-h-80 w-full rounded-xl border border-slate-100 object-contain" />
                         </a>
                       ))}
                     </div>
                   ) : (
-                    state === "loading" ? <p className="text-slate-500">Loading photo…</p> : state === "idle" && <p className="text-slate-500">Photo not found.</p>
+                    state === "loading" ? <p className="text-slate-500">{P.loadingPhoto}</p> : state === "idle" && <p className="text-slate-500">{P.photoNotFound}</p>
                   )}
                 </div>
               )}
               <div>
-                <h3 className="mb-1 font-semibold">Items</h3>
-                {state === "loading" && !items && <p className="text-slate-500">Loading…</p>}
-                {state === "error" && <p className="text-rose-600">Couldn&apos;t load this DO. Try again.</p>}
-                {items && items.length === 0 && <p className="text-slate-500">No item lines on this DO.</p>}
+                <h3 className="mb-1 font-semibold">{P.items}</h3>
+                {state === "loading" && !items && <p className="text-slate-500">{P.loading}</p>}
+                {state === "error" && <p className="text-rose-600">{P.loadError}</p>}
+                {items && items.length === 0 && <p className="text-slate-500">{P.noItems}</p>}
                 {items && items.length > 0 && (
                   <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100">
                     {items.map((l) => (
@@ -176,7 +180,7 @@ export function DoOutstanding({
             <div className="flex items-end justify-between gap-3 border-t border-slate-100 px-5 py-3">
               {handOver ? <HandOver doId={doId} {...handOver} /> : <span />}
               <button type="button" onClick={() => setAdding(true)} className="btn-primary shrink-0">
-                Add remark
+                {P.addRemark}
               </button>
             </div>
           </dialog>,
@@ -201,18 +205,19 @@ export function DoOutstanding({
 
 /** Who changed the DO and when, newest first. */
 function History({ events }: { events: StatusEvent[] }) {
+  const t = useStaffT();
   return (
     <div>
       <h3 className="mb-1 font-semibold">
-        History <span className="text-xs font-normal text-slate-400">· admin only</span>
+        {t.popup.history} <span className="text-xs font-normal text-slate-400">{t.popup.adminOnly}</span>
       </h3>
       {events.length === 0 ? (
-        <p className="text-slate-500">No changes recorded yet.</p>
+        <p className="text-slate-500">{t.popup.noHistory}</p>
       ) : (
         <ol className="space-y-2.5 border-l border-slate-200 pl-3">
           {events.map((e) => (
             <li key={e.id}>
-              <p className="font-medium">{EVENT_LABEL[e.status] ?? e.status}</p>
+              <p className="font-medium">{t.popup.event[e.status] ?? t.status[e.status as DoStatus] ?? EVENT_LABEL[e.status] ?? e.status}</p>
               {e.note && <p className="text-slate-600">{e.note}</p>}
               <p className="text-xs text-slate-400">
                 {fmtDateTime(e.created_at)}
@@ -228,12 +233,13 @@ function History({ events }: { events: StatusEvent[] }) {
 
 /** What's still outstanding on a DO, each with its Clear button. */
 function OpenList({ open }: { open: Outstanding[] }) {
+  const t = useStaffT();
   return (
     <ul className="space-y-2">
       {open.map((o) => (
         <li key={o.id} className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
           <div className="min-w-0">
-            <p className="font-medium text-rose-800">{todoLabel(o)}</p>
+            <p className="font-medium text-rose-800">{o.todo === "other" && o.todo_other ? o.todo_other : t.todo[o.todo]}</p>
             <p className="text-slate-700">{o.reason}</p>
             {o.description && <p className="text-xs text-slate-500">{o.description}</p>}
             <p className="mt-1 text-xs text-slate-400">
@@ -254,6 +260,8 @@ function AddRemark({ doId, doNo, onClose }: { doId: string; doNo: string; onClos
   const [todo, setTodo] = useState<OutstandingTodo | "">("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const t = useStaffT();
+  const P = t.popup;
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -267,7 +275,7 @@ function AddRemark({ doId, doNo, onClose }: { doId: string; doNo: string; onClos
         if (res.error) return setError(res.error);
         dialog.current?.close();
       } catch {
-        setError("Couldn't save — try again.");
+        setError(t.couldntSave);
       }
     });
   }
@@ -282,10 +290,10 @@ function AddRemark({ doId, doNo, onClose }: { doId: string; doNo: string; onClos
     >
       <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">Add remark / outstanding</h2>
+          <h2 className="text-lg font-semibold tracking-tight">{P.remarkTitle}</h2>
           <p className="text-slate-500">{doNo}</p>
         </div>
-        <button type="button" onClick={() => dialog.current?.close()} aria-label="Close" className="text-xl leading-none text-slate-400 hover:text-slate-900">
+        <button type="button" onClick={() => dialog.current?.close()} aria-label={t.close} className="text-xl leading-none text-slate-400 hover:text-slate-900">
           ×
         </button>
       </div>
@@ -294,11 +302,11 @@ function AddRemark({ doId, doNo, onClose }: { doId: string; doNo: string; onClos
         <form action={save} className="space-y-3">
           <input type="hidden" name="do_id" value={doId} />
           <div>
-            <label className="label" htmlFor={`reason-${doId}`}>Reason</label>
-            <input id={`reason-${doId}`} name="reason" required placeholder="e.g. Customer returned 2 bags" className="input" />
+            <label className="label" htmlFor={`reason-${doId}`}>{P.reason}</label>
+            <input id={`reason-${doId}`} name="reason" required placeholder={P.reasonPh} className="input" />
           </div>
           <div>
-            <label className="label" htmlFor={`todo-${doId}`}>To-do</label>
+            <label className="label" htmlFor={`todo-${doId}`}>{P.todo}</label>
             <select
               id={`todo-${doId}`}
               name="todo"
@@ -307,28 +315,28 @@ function AddRemark({ doId, doNo, onClose }: { doId: string; doNo: string; onClos
               onChange={(e) => setTodo(e.target.value as OutstandingTodo)}
               className="input"
             >
-              <option value="" disabled>Choose…</option>
-              {(Object.keys(TODO_LABEL) as OutstandingTodo[]).map((k) => (
-                <option key={k} value={k}>{TODO_LABEL[k]}</option>
+              <option value="" disabled>{P.choose}</option>
+              {(Object.keys(t.todo) as OutstandingTodo[]).map((k) => (
+                <option key={k} value={k}>{t.todo[k]}</option>
               ))}
             </select>
           </div>
           {todo === "other" && (
             <div>
-              <label className="label" htmlFor={`other-${doId}`}>Other to-do</label>
-              <input id={`other-${doId}`} name="todo_other" required placeholder="What needs to be done?" className="input" />
+              <label className="label" htmlFor={`other-${doId}`}>{P.otherTodo}</label>
+              <input id={`other-${doId}`} name="todo_other" required placeholder={P.otherPh} className="input" />
             </div>
           )}
           <div>
             <label className="label" htmlFor={`desc-${doId}`}>
-              Description <span className="font-normal text-slate-400">(optional)</span>
+              {P.description} <span className="font-normal text-slate-400">{P.optional}</span>
             </label>
             <textarea id={`desc-${doId}`} name="description" rows={2} className="input" />
           </div>
           {error && <p className="text-rose-600">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => dialog.current?.close()} className="btn-secondary">Cancel</button>
-            <button disabled={pending} className="btn-primary">{pending ? "Saving…" : "Save"}</button>
+            <button type="button" onClick={() => dialog.current?.close()} className="btn-secondary">{t.cancel}</button>
+            <button disabled={pending} className="btn-primary">{pending ? t.saving : t.save}</button>
           </div>
         </form>
       </div>

@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
 import { branchName } from "@/lib/branches";
 import type { DeliveryOrder } from "@/lib/types";
 import { SoPopup } from "./SoPopup";
+import { useStaffT } from "./StaffLang";
 
 /**
  * The SO number(s) a DO came from, each linking to its SO page when that SO has been imported.
@@ -33,22 +36,23 @@ export function SoLinks({ job, popup = false, className = "" }: { job: Pick<Deli
  * "KS deliver" = the branch it was handed over to.
  */
 export function BranchTags({ job }: { job: Pick<DeliveryOrder, "branch" | "sales_branch"> & { helper_branch?: string | null } }) {
+  const t = useStaffT().tags;
   if (!job.branch && !job.sales_branch) return null;
   return (
     <span className="inline-flex gap-1">
       {job.branch && (
-        <span className="rounded bg-slate-100 px-1.5 font-medium text-slate-600" title={`Delivered by ${branchName(job.branch)}`}>
+        <span className="rounded bg-slate-100 px-1.5 font-medium text-slate-600" title={t.deliveredBy(branchName(job.branch))}>
           {job.branch}
         </span>
       )}
       {job.sales_branch && job.sales_branch !== job.branch && (
-        <span className="rounded bg-amber-50 px-1.5 font-medium text-amber-700" title={`Sold by ${branchName(job.sales_branch)}`}>
-          for {job.sales_branch}
+        <span className="rounded bg-amber-50 px-1.5 font-medium text-amber-700" title={t.soldBy(branchName(job.sales_branch))}>
+          {t.for(job.sales_branch)}
         </span>
       )}
       {job.helper_branch && (
-        <span className="rounded bg-sky-50 px-1.5 font-medium text-sky-700" title={`Assigned to ${branchName(job.helper_branch)} to deliver`}>
-          {job.helper_branch} deliver
+        <span className="rounded bg-sky-50 px-1.5 font-medium text-sky-700" title={t.handedTo(branchName(job.helper_branch))}>
+          {t.deliver(job.helper_branch)}
         </span>
       )}
     </span>

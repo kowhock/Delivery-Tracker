@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { setHelperBranch } from "@/app/actions";
 import { BRANCHES, branchName } from "@/lib/branches";
+import { useStaffT } from "@/components/StaffLang";
 
 export type HandOverInfo = { branch: string; helper: string | null; hasDriver: boolean };
 
@@ -15,6 +16,7 @@ export function HandOver({ doId, branch, helper, hasDriver }: { doId: string } &
   const [to, setTo] = useState(helper ?? "");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const t = useStaffT();
 
   function save(next: string | null) {
     setError(null);
@@ -23,7 +25,7 @@ export function HandOver({ doId, branch, helper, hasDriver }: { doId: string } &
         await setHelperBranch(doId, next);
         setChoosing(false);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't save — try again.");
+        setError(e instanceof Error ? e.message : t.couldntSave);
       }
     });
   }
@@ -32,7 +34,7 @@ export function HandOver({ doId, branch, helper, hasDriver }: { doId: string } &
     return (
       <div className="min-w-0">
         <button type="button" onClick={() => setChoosing(true)} className="btn-secondary">
-          {helper ? `${branchName(helper)} delivering · change` : "Assign other branch"}
+          {helper ? t.handOver.delivering(branchName(helper)) : t.handOver.assignOther}
         </button>
         {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       </div>
@@ -42,27 +44,27 @@ export function HandOver({ doId, branch, helper, hasDriver }: { doId: string } &
   return (
     <div className="min-w-0 space-y-1.5">
       {hasDriver ? (
-        <p className="text-xs text-amber-700">Take the driver off this DO first, then assign it to another branch.</p>
+        <p className="text-xs text-amber-700">{t.handOver.takeDriverOff}</p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <select value={to} onChange={(e) => setTo(e.target.value)} aria-label="Branch to deliver this DO" className="input w-auto py-1.5">
-            <option value="" disabled>Choose branch…</option>
+          <select value={to} onChange={(e) => setTo(e.target.value)} aria-label={t.handOver.aria} className="input w-auto py-1.5">
+            <option value="" disabled>{t.handOver.choose}</option>
             {BRANCHES.filter((b) => b.store && b.code !== branch).map((b) => (
               <option key={b.code} value={b.code}>{b.name}</option>
             ))}
           </select>
           <button type="button" disabled={pending || !to || to === helper} onClick={() => save(to)} className="btn-primary">
-            {pending ? "Saving…" : "Assign"}
+            {pending ? t.saving : t.handOver.assign}
           </button>
           {helper && (
             <button type="button" disabled={pending} onClick={() => save(null)} className="text-sm font-medium text-rose-600 hover:underline">
-              Take back
+              {t.handOver.takeBack}
             </button>
           )}
         </div>
       )}
       <button type="button" onClick={() => setChoosing(false)} className="text-xs text-slate-500 hover:text-slate-900">
-        Cancel
+        {t.cancel}
       </button>
       {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { setCollected } from "@/app/actions";
 import { fmtDateTime } from "@/lib/format";
+import { useStaffT } from "@/components/StaffLang";
 
 /** Now in Malaysia time, as a datetime-local value ("2026-10-29T15:30"). */
 const nowMY = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 16);
@@ -10,6 +11,7 @@ const nowMY = () => new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 1
 /** O/C card: one tap marks it collected now; "Set time" records an earlier collection. Undo puts it back. */
 export function OcCollect({ doId, collectedAt }: { doId: string; collectedAt: string | null }) {
   const [pending, start] = useTransition();
+  const t = useStaffT();
   const [picking, setPicking] = useState(false);
   const [at, setAt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export function OcCollect({ doId, collectedAt }: { doId: string; collectedAt: st
         await setCollected(doId, collected, when);
         setPicking(false);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't save — try again.");
+        setError(e instanceof Error ? e.message : t.couldntSave);
       }
     });
   const err = error && <p className="text-xs text-rose-600">{error}</p>;
@@ -29,9 +31,9 @@ export function OcCollect({ doId, collectedAt }: { doId: string; collectedAt: st
     return (
       <>
       <div className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs">
-        <span className="font-medium text-emerald-700">✅ Collected {fmtDateTime(collectedAt)}</span>
+        <span className="font-medium text-emerald-700">{t.oc.collected(fmtDateTime(collectedAt))}</span>
         <button disabled={pending} onClick={() => save(false)} className="text-slate-500 hover:text-slate-900 hover:underline disabled:opacity-50">
-          Undo
+          {t.oc.undo}
         </button>
       </div>
       {err}
@@ -49,11 +51,11 @@ export function OcCollect({ doId, collectedAt }: { doId: string; collectedAt: st
           max={nowMY()}
           value={at}
           onChange={(e) => setAt(e.target.value)}
-          aria-label="Collected at"
+          aria-label={t.oc.collectedAt}
           className="input min-w-0 flex-1 py-1.5 text-xs"
         />
         <button disabled={pending || !at} onClick={() => save(true, at)} className="btn-primary px-2.5 py-1.5 text-xs disabled:opacity-50">
-          Save
+          {t.save}
         </button>
         <button disabled={pending} onClick={() => setPicking(false)} className="px-1 text-xs text-slate-500 hover:text-slate-900">
           ✕
@@ -68,7 +70,7 @@ export function OcCollect({ doId, collectedAt }: { doId: string; collectedAt: st
     <>
     <div className="flex items-center gap-1.5">
       <button disabled={pending} onClick={() => save(true)} className="btn-primary flex-1 py-1.5 text-xs disabled:opacity-50">
-        {pending ? "Saving…" : "✓ Collected"}
+        {pending ? t.saving : t.oc.collect}
       </button>
       <button
         disabled={pending}
@@ -76,10 +78,10 @@ export function OcCollect({ doId, collectedAt }: { doId: string; collectedAt: st
           setAt(nowMY());
           setPicking(true);
         }}
-        title="Collected earlier? Set the time"
+        title={t.oc.setTimeTitle}
         className="btn-secondary px-2.5 py-1.5 text-xs disabled:opacity-50"
       >
-        🕒 Set time
+        {t.oc.setTime}
       </button>
     </div>
     {err}

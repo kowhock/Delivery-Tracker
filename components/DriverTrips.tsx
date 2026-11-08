@@ -13,6 +13,7 @@ import { dayDmy } from "@/lib/date-range";
 import { SearchIcon } from "./Icons";
 import { TIME_SLOTS, type DeliveryOrder, type DoStatus } from "@/lib/types";
 import { itemNoteLines } from "@/lib/item-note";
+import { useStaffT } from "./StaffLang";
 
 type Driver = { id: string; full_name: string; real_name?: string | null; branch: string | null; lorry_no: string | null };
 /** Delivered DOs in the shown dates (by delivery time), with points and commission. */
@@ -42,6 +43,8 @@ export function DriverTrips({
   canEditPoints?: boolean;
 }) {
   const [jobs, setJobs] = useState(initial);
+  const t = useStaffT();
+  const T = t.drivers;
   useEffect(() => setJobs(initial), [initial]);
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null); // lane key or order id under the cursor
@@ -64,7 +67,7 @@ export function DriverTrips({
         const r = await optimiseTrip(lane);
         setRoutes((all) => ({ ...all, [key]: r }));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not plan the route");
+        setError(e instanceof Error ? e.message : T.couldNotPlan);
       } finally {
         setRouting(null);
       }
@@ -101,7 +104,7 @@ export function DriverTrips({
         await moveToTrip({ doId: moved.id, ...lane, orderedIds: target.map((j) => j.id) });
       } catch (e) {
         setJobs(before);
-        setError(e instanceof Error ? e.message : "Could not move the order");
+        setError(e instanceof Error ? e.message : T.couldNotMove);
       }
     });
   }
@@ -130,8 +133,8 @@ export function DriverTrips({
         } ${over === key ? "ring-2 ring-brand-600" : ""}`}
       >
         <div className="flex items-center justify-between px-1 pb-2 text-xs font-semibold text-slate-600">
-          <span>{isNew ? `+ Trip ${shownNo}` : `Trip ${shownNo}`}</span>
-          {!isNew && <span className="font-normal text-slate-400">{delivered}/{laneJobs.length} delivered</span>}
+          <span>{isNew ? T.newTrip(shownNo) : T.trip(shownNo)}</span>
+          {!isNew && <span className="font-normal text-slate-400">{T.laneDone(delivered, laneJobs.length)}</span>}
         </div>
         {!isNew && notLeft >= 2 && (
           <div className="px-1 pb-2">
@@ -139,23 +142,23 @@ export function DriverTrips({
               type="button"
               disabled={pending}
               onClick={() => planRoute(lane)}
-              title="Shortest order from the store, through every stop, and back to the store"
+              title={T.bestRouteTitle}
               className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-50"
             >
-              {routing === key ? "Planning route…" : "🧭 Best route"}
+              {routing === key ? T.planning : T.bestRoute}
             </button>
             {route && (
               <p className="mt-1.5 text-[11px] leading-snug text-slate-500">
-                {route.store} store → {notLeft - route.notFound.length} stops → back: <b className="text-slate-700">{route.km} km</b> · about{" "}
-                {route.minutes >= 60 ? `${Math.floor(route.minutes / 60)} h ${route.minutes % 60} min` : `${route.minutes} min`}
+                {T.route(route.store, notLeft - route.notFound.length)}<b className="text-slate-700">{route.km} km</b>
+                {T.about(route.minutes >= 60 ? T.hours(Math.floor(route.minutes / 60), route.minutes % 60) : T.minutes(route.minutes))}
                 {route.mapsUrl && (
                   <>
                     {" · "}
-                    <a href={route.mapsUrl} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">Open in Maps</a>
+                    <a href={route.mapsUrl} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">{T.openMaps}</a>
                   </>
                 )}
                 {route.notFound.length > 0 && (
-                  <span className="block text-rose-600">Address not found, put last: {route.notFound.join(", ")}</span>
+                  <span className="block text-rose-600">{T.notFoundLast(route.notFound.join(", "))}</span>
                 )}
               </p>
             )}
@@ -203,15 +206,16 @@ export function DriverTrips({
                   </span>
                   <DoBadge
                     status={j.status}
+                    label={t.status[j.status]}
                     at={j.status === "delivered" ? j.delivered_at : j.status === "out_for_delivery" ? j.started_at : null}
                   />
                 </div>
                 <p className="text-sm font-medium leading-snug">{j.customer_name}</p>
-                {mapAddress(j) && <p className="line-clamp-2 text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? "no address"}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
-                {j.time_slot && <p className="text-sky-700">🕒 Estimated {TIME_SLOTS[j.time_slot]}</p>}
+                {mapAddress(j) && <p className="line-clamp-2 text-slate-500" title={j.map_address ? `AutoCount: ${j.address ?? t.noAddress}` : undefined}>{j.map_address && "📍 "}{mapAddress(j)}</p>}
+                {j.time_slot && <p className="text-sky-700">🕒 {t.estimated(TIME_SLOTS[j.time_slot])}</p>}
                 {j.remarks && <p className="line-clamp-2 rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">{j.remarks}</p>}
                 <div className="flex items-center justify-between gap-2 text-slate-400">
-                  <span className="whitespace-nowrap">{j.do_items?.length || itemNoteLines(j.item_note).length} items</span>
+                  <span className="whitespace-nowrap">{T.items(j.do_items?.length || itemNoteLines(j.item_note).length)}</span>
                 </div>
                 {j.instructions && <p className="line-clamp-2 rounded bg-violet-50 px-1.5 py-0.5 text-violet-800">📋 {j.instructions}</p>}
                 {/* M- DOs: the items the office typed (AutoCount sends none for invoices). */}
@@ -225,7 +229,7 @@ export function DriverTrips({
             );
           })}
           {laneJobs.length === 0 && (
-            <p className="py-3 text-center text-xs text-slate-400">{isNew ? "Drop here for a new trip" : "Drop orders here"}</p>
+            <p className="py-3 text-center text-xs text-slate-400">{isNew ? T.dropNew : T.dropHere}</p>
           )}
         </div>
       </div>
@@ -239,8 +243,8 @@ export function DriverTrips({
       <div className="flex flex-wrap items-center justify-end gap-3">
         {searching && (
           <span className="text-sm text-slate-500">
-            {found ? `${found} DO${found > 1 ? "s" : ""} found` : "No DOs match"}
-            <button type="button" onClick={() => setSearch("")} className="ml-3 text-brand-700 hover:underline">Clear</button>
+            {found ? T.found(found) : T.noMatch}
+            <button type="button" onClick={() => setSearch("")} className="ml-3 text-brand-700 hover:underline">{t.clear}</button>
           </span>
         )}
         <label className="relative w-full sm:w-80">
@@ -249,14 +253,14 @@ export function DriverTrips({
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer, address or DO no."
-            aria-label="Search customer, address or DO no."
+            placeholder={T.search}
+            aria-label={T.search}
             className="input py-2 pl-9 pr-3 text-sm"
           />
         </label>
       </div>
       {error && <p className="rounded-xl bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</p>}
-      {pending && <p className="text-xs text-slate-400">Saving…</p>}
+      {pending && <p className="text-xs text-slate-400">{t.saving}</p>}
 
       {drivers.map((d) => {
         const mine = jobs.filter((j) => j.driver_id === d.id);
@@ -272,19 +276,19 @@ export function DriverTrips({
                 <h2 className="flex items-center gap-2 font-semibold leading-tight">
                   {d.full_name}
                   {d.lorry_no && (
-                    <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">Lorry {d.lorry_no}</span>
+                    <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-800">{t.lorry(d.lorry_no)}</span>
                   )}
                 </h2>
                 {(d.branch || d.real_name) && <p className="text-xs text-slate-500">{[d.branch, d.real_name].filter(Boolean).join(" · ")}</p>}
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-3 text-sm text-slate-500">
                 {stats[d.id] && (
-                  <span className="rounded-lg bg-yellow-50 px-2 py-0.5 text-yellow-900" title="Delivered in these dates (by delivery time)">
+                  <span className="rounded-lg bg-yellow-50 px-2 py-0.5 text-yellow-900" title={T.statsTitle}>
                     ⭐ {stats[d.id].points} pts · 💰 RM {stats[d.id].rm}
-                    {stats[d.id].missingPoints > 0 && <span className="text-rose-600"> · {stats[d.id].missingPoints} need points</span>}
+                    {stats[d.id].missingPoints > 0 && <span className="text-rose-600">{T.needPoints(stats[d.id].missingPoints)}</span>}
                   </span>
                 )}
-                <span>{done} of {mine.length} delivered</span>
+                <span>{t.doneOf(done, mine.length)}</span>
                 <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100">
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: `${mine.length ? (done / mine.length) * 100 : 0}%` }} />
                 </div>
