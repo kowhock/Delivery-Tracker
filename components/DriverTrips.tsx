@@ -34,6 +34,7 @@ export function DriverTrips({
   jobs: initial,
   stats,
   canEditPoints = false,
+  history = false,
 }: {
   drivers: Driver[];
   dates: string[];
@@ -41,6 +42,8 @@ export function DriverTrips({
   stats: Record<string, DriverStats>;
   /** May change points (lib/access.ts). */
   canEditPoints?: boolean;
+  /** Admins: the DO popup also lists who changed the DO and when (same as on Deliveries). */
+  history?: boolean;
 }) {
   const [jobs, setJobs] = useState(initial);
   const t = useStaffT();
@@ -202,7 +205,7 @@ export function DriverTrips({
                 <div className="space-y-1">
                   <span className="block whitespace-nowrap font-semibold text-slate-900">
                     <span className="mr-1 text-slate-400">{i + 1}.</span>
-                    <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={[]} photo={!!j.pod_photo_path} />
+                    <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={[]} history={history} photo={!!j.pod_photo_path} />
                   </span>
                   <DoBadge
                     status={j.status}

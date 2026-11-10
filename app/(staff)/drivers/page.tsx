@@ -126,7 +126,7 @@ export default async function DriversPage({
           {T.noDrivers(branch || null)} (<code>profiles.branch</code>).
         </div>
       ) : (
-        <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} canEditPoints={canEditPoints(profile)} />
+        <DriverTrips drivers={drivers} dates={dates} jobs={jobs} stats={stats} canEditPoints={canEditPoints(profile)} history={profile.role === "admin"} />
       )}
     </div>
   );
