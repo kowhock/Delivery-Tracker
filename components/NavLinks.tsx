@@ -21,7 +21,7 @@ export function NavLinks({ role, outstanding = 0 }: { role: Role; outstanding?: 
   const t = useStaffT();
   const links = LINKS.filter((l) => !l.adminOnly || role === "admin");
   return (
-    <nav className="-mx-1 flex gap-1 overflow-x-auto">
+    <nav className="-mx-1 flex flex-wrap gap-1 sm:flex-nowrap sm:overflow-x-auto">
       {links.map((l) => {
         // Exact segment match so "/drivers" doesn't also light up "/driver".
         const active = pathname === l.href || pathname.startsWith(l.href + "/");

@@ -117,7 +117,7 @@ export default async function TripFormPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Trip form</h1>
         </div>
-        <form className="flex flex-wrap items-center gap-2">
+        <form className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {locked ? (
             <select name="driver" defaultValue={driver?.id} aria-label="Driver" className="input w-auto">
               {drivers.map((d) => (

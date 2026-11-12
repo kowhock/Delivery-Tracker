@@ -88,8 +88,9 @@ export function DateRangePicker({ from, to, today, max, small = false, align = "
         {!range[0] && !range[1] ? R.allDates : range[0] === range[1] ? dmy(range[0]) : `${range[0] ? dmy(range[0]) : "…"} – ${range[1] ? dmy(range[1]) : "…"}`}
       </button>
 
+      {/* Phones: the calendar opens centred on screen, so it never hangs off the edge. */}
       {open && (
-        <div role="dialog" aria-label={R.pick} className={`absolute ${align === "left" ? "left-0" : "right-0"} z-30 mt-2 w-[18.5rem] rounded-xl border border-slate-200 bg-white text-sm shadow-lg`}>
+        <div role="dialog" aria-label={R.pick} className={`absolute ${align === "left" ? "left-0" : "right-0"} z-30 mt-2 w-[18.5rem] max-sm:fixed max-sm:inset-x-0 max-sm:top-1/2 max-sm:mx-auto max-sm:mt-0 max-sm:-translate-y-1/2 max-sm:shadow-2xl rounded-xl border border-slate-200 bg-white text-sm shadow-lg`}>
           {/* Month */}
           <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
             <button type="button" onClick={() => shift(-1)} className="flex size-8 items-center justify-center rounded-md text-lg text-slate-600 hover:bg-slate-100" aria-label={R.prev}>‹</button>

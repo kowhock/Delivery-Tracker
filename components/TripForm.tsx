@@ -162,9 +162,10 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
   );
   return (
     // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
-    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-4 text-[11px] text-black shadow print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
-      <div className="flex gap-4">
-        <div className="w-[38%] space-y-4">
+    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-3 text-[13px] text-black shadow sm:p-4 sm:text-[11px] print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
+      {/* Phones: title + branch above the lorry checks instead of squeezed beside them. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:gap-4 print:flex-row print:gap-4">
+        <div className="w-full space-y-2 sm:w-[38%] sm:space-y-4 print:w-[38%] print:space-y-4">
           <h2 className="text-base font-bold underline">DELIVERY TRIP TRACKING</h2>
           <div className="border-2 border-black px-3 py-3 text-sm font-bold uppercase">Branch&nbsp;&nbsp;{branch}</div>
         </div>
@@ -200,7 +201,15 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
         </table>
       </div>
 
-      <table className="mt-4 w-full border-collapse">
+      {/* Phones: Date / Driver / Lorry one per row. Screen-only; print uses the table below. */}
+      <table className="mt-4 w-full border-collapse sm:hidden print:hidden">
+        <tbody>
+          <tr><th className={`${head} w-[35%]`}>Date</th><td className={cell}>{dotted(day.date)}</td></tr>
+          <tr><th className={head}>Driver</th><td className={cell}>{driver}</td></tr>
+          <tr><th className={head}>Lorry no</th><td className={cell}>{day.lorry || lorry}</td></tr>
+        </tbody>
+      </table>
+      <table className="mt-4 hidden w-full border-collapse sm:table print:table">
         <tbody>
           <tr>
             <th className={`${head} w-[10%]`}>Date</th>
@@ -213,7 +222,27 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
         </tbody>
       </table>
 
-      <table className="mt-4 w-full table-fixed border-collapse">
+      {/*
+        Phones: one DO box per row (1–6 then 7–12, the same order as the two columns below), so boxes aren't squeezed.
+        Same boxes and keys as the A4 table, so typing in either fills both; only one is ever shown.
+      */}
+      <table className="mt-4 w-full table-fixed border-collapse sm:hidden print:hidden">
+        <colgroup>
+          <col className="w-[28%]" /><col className="w-[52%]" /><col className="w-[20%]" />
+        </colgroup>
+        {[0, 1].flatMap((side) =>
+          rows.map((pair, r) => (
+            <tbody key={`${side}:${r}`}>
+              {FIELDS.map((f, k) => (
+                <tr key={f}>
+                  <DoBoxRow field={f} row={k} x={pair[side]} at={(field) => boxKey(page, r, side, field)} filled={filled} setFilled={setFilled} driverId={driverId} date={day.date} canPoints={canEditPoints} />
+                </tr>
+              ))}
+            </tbody>
+          ))
+        )}
+      </table>
+      <table className="mt-4 hidden w-full table-fixed border-collapse sm:table print:table">
         <colgroup>
           <col className="w-[15%]" /><col className="w-[25%]" /><col className="w-[10%]" />
           <col className="w-[15%]" /><col className="w-[25%]" /><col className="w-[10%]" />
@@ -370,16 +399,16 @@ function MonthlyPage({
   // Tighter rows than the daily form so all 31 days + signatures fit on one A4 page.
   const cell = "border border-black px-1.5 py-0.5 leading-tight";
   return (
-    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-6 text-[12px] text-black shadow print:max-w-none print:p-0 print:shadow-none">
+    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-3 text-[12px] text-black shadow sm:p-6 print:max-w-none print:p-0 print:shadow-none">
       <div className="flex items-center gap-3">
-        <img src="/kowhock-logo-full.png" alt="Kow Hock" width={500} height={387} className="h-16 w-auto shrink-0" />
+        <img src="/kowhock-logo-full.png" alt="Kow Hock" width={500} height={387} className="h-10 w-auto shrink-0 sm:h-16 print:h-16" />
         <div>
           <p className="text-base font-bold">{COMPANY_ZH}</p>
           <p className="font-bold">{COMPANY_EN}</p>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-[auto_1fr_auto_1fr] gap-x-3 gap-y-1">
+      <div className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr_auto_1fr] print:grid-cols-[auto_1fr_auto_1fr]">
         <span>DATE</span>
         <span className="border-b border-black">: {dotted(from)}&nbsp;&nbsp;<b>TO</b>&nbsp;&nbsp;{dotted(to)}</span>
         <span>DRIVER</span>
@@ -441,7 +470,7 @@ function MonthlyPage({
         </tbody>
       </table>
 
-      <div className="mt-10 grid grid-cols-4 gap-6 text-center">
+      <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 text-center sm:grid-cols-4 sm:gap-6 print:grid-cols-4 print:gap-6">
         {SIGNATURES.map((s) => (
           <span key={s} className="border-t border-black pt-1">{s}</span>
         ))}

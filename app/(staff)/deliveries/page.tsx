@@ -19,6 +19,7 @@ import { LinkSpecialDo } from "@/components/LinkSpecialDo";
 import { SPECIAL_REASONS, canEditSpecial, canPrintSpecial, isGoodsReason, isSpecialReason } from "@/lib/special";
 import { NavForm, NavLink, NavSelect, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 import { ItemNote } from "@/components/ItemNote";
+import { ColumnTabs } from "@/components/ColumnTabs";
 import { canEditItemNote, isIcbDo } from "@/lib/item-note";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -50,7 +51,10 @@ const PLANNABLE: DoStatus[] = ["pending", "assigned", "failed"];
 
 const GRID_COLS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5", "lg:grid-cols-6", "lg:grid-cols-7"];
 
-const TAB = "rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap";
+// Phones: roomier tabs; tab groups take the whole row with the tabs sharing it evenly.
+const TAB = "rounded-md px-2 py-1.5 text-xs font-medium whitespace-nowrap sm:py-1";
+const TAB_GROUP = "flex w-full rounded-lg bg-slate-100 p-0.5 sm:w-auto";
+const TAB_FILL = "flex-1 text-center sm:flex-none";
 const TAB_ON = "bg-white text-slate-900 shadow-sm";
 const TAB_OFF = "text-slate-500 hover:text-slate-900";
 
@@ -214,12 +218,12 @@ export default async function DeliveriesPage({
       </div>
 
       <div className="card flex flex-wrap items-center gap-x-2.5 gap-y-2 p-2">
-        <nav className="flex rounded-lg bg-slate-100 p-0.5">
+        <nav className={TAB_GROUP}>
           {(Object.keys(DELIVERY_FILTERS) as DeliveryFilter[]).map((value) => (
             <NavLink
               key={value}
               href={href({ ...keep, show: value || undefined, ...dateParams, q: q || undefined })}
-              className={`${TAB} ${show === value ? TAB_ON : TAB_OFF}`}
+              className={`${TAB} ${TAB_FILL} ${show === value ? TAB_ON : TAB_OFF}`}
             >
               {T.filters[value]}
               {value === "failed" && !!failedCount && (
@@ -262,13 +266,13 @@ export default async function DeliveriesPage({
           </NavLink>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <nav className="flex rounded-lg bg-slate-100 p-0.5">
-            <NavLink href={href(keep)} className={`${TAB} ${isToday ? TAB_ON : TAB_OFF}`}>{t.today}</NavLink>
-            <NavLink href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${isThisWeek ? TAB_ON : TAB_OFF}`}>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <nav className={TAB_GROUP}>
+            <NavLink href={href(keep)} className={`${TAB} ${TAB_FILL} ${isToday ? TAB_ON : TAB_OFF}`}>{t.today}</NavLink>
+            <NavLink href={href({ ...keep, from: weekFrom, to: weekTo })} className={`${TAB} ${TAB_FILL} ${isThisWeek ? TAB_ON : TAB_OFF}`}>
               {T.thisWeek}
             </NavLink>
-            <NavLink href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${isAllDates ? TAB_ON : TAB_OFF}`}>
+            <NavLink href={href({ ...keep, from: "", to: "" })} className={`${TAB} ${TAB_FILL} ${isAllDates ? TAB_ON : TAB_OFF}`}>
               {T.allDates}
             </NavLink>
           </nav>
@@ -312,10 +316,14 @@ export default async function DeliveriesPage({
       </div>
 
       <PendingDim>
-        <div className={`-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 lg:mx-0 lg:grid ${GRID_COLS[columns.length]} lg:overflow-visible lg:px-0`}>
+        {/* Phones: a tab per column, one column shown at a time. Tablets: swipe across. Laptops: side by side. */}
+        <ColumnTabs
+          columns={columns.map((c) => ({ key: c.key, label: c.label, dot: c.dot, count: c.jobs.length }))}
+          className={`flex flex-col gap-3 pb-4 sm:-mx-4 sm:flex-row sm:snap-x sm:gap-4 sm:overflow-x-auto sm:px-4 lg:mx-0 lg:grid ${GRID_COLS[columns.length]} lg:overflow-visible lg:px-0`}
+        >
           {columns.map(({ key, label, dot, jobs: col }) => {
             return (
-              <section key={key} className="w-72 shrink-0 snap-start rounded-2xl bg-slate-100/70 p-2 lg:w-auto">
+              <section key={key} className="w-full shrink-0 snap-start rounded-2xl bg-slate-100/70 p-2 sm:w-72 lg:w-auto">
                 <h2 className="flex items-center gap-2 px-2 py-2 text-sm font-semibold text-slate-700">
                   <span className={`size-2 rounded-full ${dot}`} />
                   {label}
@@ -440,7 +448,7 @@ export default async function DeliveriesPage({
               </section>
             );
           })}
-        </div>
+        </ColumnTabs>
 
       {capped && (
         <p className="pb-4 text-center text-sm text-slate-500">
