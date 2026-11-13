@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
+import { rollUnassigned } from "@/lib/roll-unassigned";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { DO_STATUSES, TIME_SLOTS, lorryLabel, type DeliveryOrder, type DoStatus, type Lorry, type Outstanding, type Profile } from "@/lib/types";
 import { getStaffT } from "@/lib/staff-lang";
@@ -94,6 +95,8 @@ export default async function DeliveriesPage({
   // Cross-branch: DOs this branch sold that another branch is delivering.
   const crossOnly = sp.xb === "1";
   const { supabase, user, profile } = await requireStaff();
+  // Yesterday's (and the last few days') Unassigned DOs move to today first, so they aren't forgotten.
+  await rollUnassigned(supabase);
   const { t } = await getStaffT();
   const T = t.deliveries;
   const date = (d: string) => fmtDate(d, t.locale);

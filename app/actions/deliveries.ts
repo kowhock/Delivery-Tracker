@@ -376,8 +376,11 @@ export async function assignDriver(formData: FormData) {
   if (supplier) status = "delivered";
   else if (plannable || current.supplier_delivery) status = driverId ? "assigned" : "pending";
 
+  // A driver can't Start a DO whose day has passed, so one given to a driver on an old day moves to today.
+  const today = todayMY();
+  const moveToToday = !date && !!driverId && current.delivery_date < today;
   // New driver or day → a trip of its own after the driver's last one; same driver and day keeps its trip.
-  const day = date ?? current.delivery_date;
+  const day = date ?? (moveToToday ? today : current.delivery_date);
   const tripNo = driverId && (driverId !== current.driver_id || day !== current.delivery_date) ? await nextTrip(supabase, driverId, day, doId) : null;
 
   await supabase
@@ -390,7 +393,7 @@ export async function assignDriver(formData: FormData) {
       supplier_delivery: supplier,
       // Delivered now (set by the database); undoing a supplier delivery clears it.
       ...(current.supplier_delivery && !supplier ? { delivered_at: null } : {}),
-      ...(date ? { delivery_date: date } : {}),
+      ...(date || moveToToday ? { delivery_date: day } : {}),
       ...(tripNo ? { trip_no: tripNo, trip_seq: 0 } : {}),
     })
     .eq("id", doId);

@@ -10,6 +10,7 @@ import { dayTotals, sumDays, withTripPoints } from "@/lib/commission";
 import { mapsEnabled } from "@/lib/geo";
 import { withStartedAt } from "@/lib/delivery-times";
 import { failedAttempts } from "@/lib/attempts";
+import { rollUnassigned } from "@/lib/roll-unassigned";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { getStaffT } from "@/lib/staff-lang";
@@ -23,6 +24,7 @@ export default async function DriversPage({
 }) {
   const sp = await searchParams;
   const { supabase, profile } = await requireStaff();
+  await rollUnassigned(supabase); // leftover Unassigned DOs move to today (lib/roll-unassigned.ts)
   const { t } = await getStaffT();
   const T = t.drivers;
 
