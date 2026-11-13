@@ -84,7 +84,7 @@ export default async function DeliveriesPage({
   const q = (sp.q ?? "").trim();
   // Search text, safe inside a PostgREST or(…) filter.
   const term = q.replace(/[,()%*"\\:]/g, " ").replace(/\s+/g, " ").trim();
-  // A search only looks inside the DOs the filters show (dates, status, branch, Also show).
+  // A search looks through every date (the picked dates are ignored), inside the other filters (status, branch, Also show).
   const statuses = DELIVERY_FILTERS[show].statuses;
   // O/C (customer collects) and Supplier delivery are hidden unless staff pick them under "Also show".
   // (?oc=show is the old link for O/C.)
@@ -116,8 +116,9 @@ export default async function DeliveriesPage({
     if (!showSupplier) query = query.eq("supplier_delivery", false);
     if (locked) query = query.or(deliveredOrSoldBy(locked));
     if (term) query = query.or(["do_no", "customer_name", "address", "map_address"].map((c) => `${c}.ilike.%${term}%`).join(","));
-    if (from) query = query.gte("delivery_date", from);
-    if (to) query = query.lte("delivery_date", to);
+    // A search ignores the picked dates, so a DO is found whatever day it's on.
+    if (from && !term) query = query.gte("delivery_date", from);
+    if (to && !term) query = query.lte("delivery_date", to);
     // A branch sees what it delivers (and DOs handed over to it); Cross-branch switches to what it sold that another branch delivers (view only).
     if (branch && crossOnly) query = query.eq("sales_branch", branch).neq("branch", branch);
     else if (branch) query = query.or(`branch.eq.${branch},helper_branch.eq.${branch}`);
@@ -193,7 +194,7 @@ export default async function DeliveriesPage({
   const dateParams = isToday ? {} : { from, to };
   const hidden = (params: Record<string, string | undefined>) =>
     Object.entries(params).map(([k, v]) => v !== undefined && <input key={k} type="hidden" name={k} value={v} />);
-  const rangeLabel = (term ? `${T.matching(term)} · ` : "") + (isToday
+  const rangeLabel = term ? `${T.matching(term)} · ${T.allDates}` : (isToday
       ? T.todayOn(date(today))
       : isThisWeek
         ? T.thisWeekRange(date(weekFrom), date(weekTo))
