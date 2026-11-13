@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSession, requireStaff } from "@/lib/auth";
 import { sendDeliveredNotice, waApiEnabled } from "@/lib/whatsapp-api";
 import type { DoStatus } from "@/lib/types";
+import { todayMY } from "@/lib/format";
 
 // ---------- Delivery status (drivers + staff) ------------------------
 
@@ -16,8 +17,21 @@ async function logAndRevalidate(supabase: SupabaseClient, doId: string, status: 
   revalidatePath("/orders/[id]", "page");
 }
 
+/**
+ * Drivers can only Start, Deliver or Fail a DO on its own day (delivery_date, Malaysian time). After
+ * that the office completes it on that day's trip form, so it counts on the day it was given.
+ */
+async function driverSession(doId: string) {
+  const s = await getSession();
+  if (s.profile.role === "driver") {
+    const { data: d } = await s.supabase.from("delivery_orders").select("delivery_date").eq("id", doId).single();
+    if (d?.delivery_date && d.delivery_date < todayMY()) throw new Error("This DO's day has passed. The office will complete it on the trip form.");
+  }
+  return s;
+}
+
 export async function startDelivery(doId: string) {
-  const { supabase } = await getSession();
+  const { supabase } = await driverSession(doId);
   const { error } = await supabase
     .from("delivery_orders")
     .update({ status: "out_for_delivery", failed_reason: null })
@@ -27,7 +41,7 @@ export async function startDelivery(doId: string) {
 }
 
 export async function markDelivered(doId: string, photoPath: string | null, note: string) {
-  const { supabase } = await getSession();
+  const { supabase } = await driverSession(doId);
   const { error } = await supabase
     .from("delivery_orders")
     .update({ status: "delivered", pod_photo_path: photoPath, delivered_at: new Date().toISOString() })
@@ -64,7 +78,7 @@ export async function resendDeliveredNotice(doId: string) {
 }
 
 export async function markFailed(doId: string, reason: string) {
-  const { supabase } = await getSession();
+  const { supabase } = await driverSession(doId);
   const { error } = await supabase
     .from("delivery_orders")
     .update({ status: "failed", failed_reason: reason })

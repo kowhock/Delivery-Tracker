@@ -51,19 +51,17 @@ export default async function DriversPage({
   let jobs: DeliveryOrder[] = [];
   const stats: Record<string, DriverStats> = {};
   if (drivers.length) {
-    // Commission counts what was actually delivered on each day (delivered_at), not the planned date.
-    const end = new Date(dates[dates.length - 1] + "T00:00:00+08:00");
-    end.setUTCDate(end.getUTCDate() + 1);
+    // Commission counts each DO on the day it was assigned (delivery_date), like the trip form.
     const { data: deliveredRows } = await supabase
       .from("delivery_orders")
       .select("id, driver_id, delivery_date, trip_no, delivered_at, points, points_manual")
       .in("driver_id", drivers.map((d) => d.id))
       .eq("status", "delivered")
       .eq("cancelled", false)
-      .gte("delivered_at", `${dates[0]}T00:00:00+08:00`)
-      .lt("delivered_at", end.toISOString());
+      .gte("delivery_date", dates[0])
+      .lte("delivery_date", dates[dates.length - 1]);
     // Failed attempts earn their points too.
-    const failed = await failedAttempts(supabase, drivers.map((d) => d.id), `${dates[0]}T00:00:00+08:00`, end.toISOString());
+    const failed = await failedAttempts(supabase, drivers.map((d) => d.id), dates[0], dates[dates.length - 1]);
     for (const d of drivers) {
       const mine = withTripPoints([...(deliveredRows ?? []), ...failed].filter((r) => r.driver_id === d.id));
       if (mine.length) stats[d.id] = sumDays(dayTotals(mine));

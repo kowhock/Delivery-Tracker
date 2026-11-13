@@ -24,16 +24,16 @@ export type FailedAttempt = {
   map_address: string | null;
 };
 
-/** Attempts by these drivers that failed in [fromIso, toIso). */
-export async function failedAttempts(supabase: SupabaseClient, driverIds: string[], fromIso: string, toIso: string): Promise<FailedAttempt[]> {
+/** Attempts by these drivers on DOs assigned to days `from`..`to` (YYYY-MM-DD, inclusive). */
+export async function failedAttempts(supabase: SupabaseClient, driverIds: string[], from: string, to: string): Promise<FailedAttempt[]> {
   if (!driverIds.length) return [];
   const { data } = await supabase
     .from("delivery_attempts")
     .select("id, do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_at, failed_reason, do:delivery_orders!inner(do_no, customer_name, address, map_address, points, points_manual, cancelled)")
     .in("driver_id", driverIds)
     .eq("do.cancelled", false)
-    .gte("failed_at", fromIso)
-    .lt("failed_at", toIso)
+    .gte("delivery_date", from)
+    .lte("delivery_date", to)
     .order("failed_at");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map(({ do: d, failed_at, ...a }: any) => ({

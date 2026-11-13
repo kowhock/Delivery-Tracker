@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
 import { canEditPoints } from "@/lib/access";
 import { branchName, lockedBranches } from "@/lib/branches";
-import { addDays, dateRange, fmtTime, mapAddress, todayMY } from "@/lib/format";
+import { dateRange, fmtTime, mapAddress, todayMY } from "@/lib/format";
 import { startedTimes } from "@/lib/delivery-times";
 import { failedAttempts, type FailedAttempt } from "@/lib/attempts";
 import { commissionForDay, withTripPoints } from "@/lib/commission";
@@ -14,8 +14,6 @@ import { fromTripForm } from "@/app/actions";
 
 const MAX_DAYS = 31; // the monthly form has 31 rows
 
-const TZ = "Asia/Kuala_Lumpur";
-const dayOf = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
 
 export default async function TripFormPage({
   searchParams,
@@ -49,29 +47,29 @@ export default async function TripFormPage({
       .lte("date", dates[dates.length - 1]);
     for (const n of noteRows ?? []) (savedNotes[n.date] ??= {})[n.field] = n.value;
 
-    // Commission counts what was delivered on each day (delivered_at), like Driver status,
-    // and every failed attempt on the day it failed (with a "Failed" remark).
-    const dayStart = `${dates[0]}T00:00:00+08:00`;
-    const dayEnd = `${addDays(dates[dates.length - 1], 1)}T00:00:00+08:00`;
+    // Every DO the office gave this driver for each day (delivery_date), whatever its status, plus every
+    // failed attempt on those days (with a "Failed" remark). Only delivered DOs and failed attempts earn
+    // points; one not delivered shows red until the office fills in its times (it then counts on that day).
     const { data: rows } = await supabase
       .from("delivery_orders")
-      .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, points, points_manual, delivered_at, lorry_id")
+      .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, trip_seq, status, points, points_manual, delivered_at, lorry_id")
       .eq("driver_id", driver.id)
-      .eq("status", "delivered")
+      .in("status", ["assigned", "out_for_delivery", "delivered"])
       .eq("cancelled", false)
-      .gte("delivered_at", dayStart)
-      .lt("delivered_at", dayEnd)
-      .order("delivered_at");
-    const failed = await failedAttempts(supabase, [driver.id], dayStart, dayEnd);
-    const delivered = withTripPoints<NonNullable<typeof rows>[number] & Partial<FailedAttempt>>([...(rows ?? []), ...failed]).sort((a, b) => a.delivered_at!.localeCompare(b.delivered_at!));
+      .gte("delivery_date", dates[0])
+      .lte("delivery_date", dates[dates.length - 1]);
+    const failed = await failedAttempts(supabase, [driver.id], dates[0], dates[dates.length - 1]);
+    const done = (rows ?? []).filter((d) => d.status === "delivered");
+    const todo = (rows ?? []).filter((d) => d.status !== "delivered").sort((a, b) => a.trip_no - b.trip_no || a.trip_seq - b.trip_seq);
+    const delivered = withTripPoints<Omit<(typeof done)[number], "status" | "trip_seq"> & Partial<FailedAttempt>>([...done, ...failed]).sort((a, b) => a.delivered_at!.localeCompare(b.delivered_at!));
 
     // Time in = when the driver tapped Start (the last time, if started more than once).
     // A failed attempt keeps the start of that attempt.
     const started = await startedTimes(supabase, (rows ?? []).map((d) => d.id));
-    const typedIn = new Set(await fromTripForm((rows ?? []).map((d) => d.id)));
+    const typedIn = new Set(await fromTripForm(done.map((d) => d.id)));
 
     // Lorries used (stamped on each DO when delivered); else the driver's lorry now.
-    const lorryIds = [...new Set(delivered.map((d) => d.lorry_id).filter((x): x is string => !!x))];
+    const lorryIds = [...new Set([...delivered, ...todo].map((d) => d.lorry_id).filter((x): x is string => !!x))];
     const { data: lorryRows } = await supabase
       .from("lorries")
       .select("id, lorry_no, plate_no, driver_id")
@@ -84,7 +82,8 @@ export default async function TripFormPage({
     lorry = [...new Set(delivered.map((d) => labelOf(d.lorry_id)).filter(Boolean))].join(", ") || labelOf(null);
 
     days = dates.map((date) => {
-      const mine = delivered.filter((d) => d.delivered_at && dayOf(d.delivered_at) === date);
+      const mine = delivered.filter((d) => d.delivery_date === date);
+      const notDone = todo.filter((d) => d.delivery_date === date);
       const points = mine.reduce((s, d) => s + (d.points ?? 0), 0);
       return {
         date,
@@ -93,18 +92,33 @@ export default async function TripFormPage({
         trips: new Set(mine.map((d) => `${d.delivery_date}|${d.trip_no}`)).size,
         lorry: [...new Set(mine.map((d) => labelOf(d.lorry_id)).filter(Boolean))].join(", ") || lorry,
         missingPoints: mine.filter((d) => d.points == null).length,
-        dos: mine.map((d) => ({
-          id: d.id,
-          doNo: d.do_no,
-          location: mapAddress(d) || d.customer_name,
-          timeIn: fmtTime(d.failed ? d.started_at : started.get(d.id)),
-          timeBack: fmtTime(d.delivered_at),
-          points: d.points,
-          manual: d.points_manual && d.points != null,
-          original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
-          failed: d.failed ? d.failed_reason || "Failed" : "",
-          fromTripForm: !d.failed && typedIn.has(d.id),
-        })),
+        notDone: notDone.length,
+        dos: [
+          ...mine.map((d) => ({
+            id: d.id,
+            doNo: d.do_no,
+            location: mapAddress(d) || d.customer_name,
+            timeIn: fmtTime(d.failed ? d.started_at : started.get(d.id)),
+            timeBack: fmtTime(d.delivered_at),
+            points: d.points,
+            manual: d.points_manual && d.points != null,
+            original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
+            failed: d.failed ? d.failed_reason || "Failed" : "",
+            fromTripForm: !d.failed && typedIn.has(d.id),
+          })),
+          // Given for this day but not delivered: no points until the office fills in both times.
+          ...notDone.map((d) => ({
+            id: d.id,
+            doNo: d.do_no,
+            location: mapAddress(d) || d.customer_name,
+            timeIn: "",
+            timeBack: "",
+            points: null,
+            manual: false,
+            original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
+            notDone: true,
+          })),
+        ],
       };
     });
   }

@@ -20,8 +20,10 @@ export type TripDo = { id: string; doNo: string; location: string; timeIn: strin
   /** Why this attempt failed; set only on failed attempts (they still earn their points). */
   failed?: string;
   /** Recorded on this form (Save), so it can be undone here. */
-  fromTripForm?: boolean };
-export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; dos: TripDo[] };
+  fromTripForm?: boolean;
+  /** Given for this day but not delivered: red, no points until the office fills in its times and saves. */
+  notDone?: boolean };
+export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; notDone: number; dos: TripDo[] };
 
 /** canEditPoints: may type points for a DO added on the form (lib/access.ts); without it the box stays blank. */
 /** savedNotes: what the office typed and saved so far, by date then box (trip_form_notes, lib/trip-form.ts). */
@@ -42,10 +44,14 @@ const dotted = (iso: string, sep = ".") => iso.split("-").reverse().join(sep);
 const slashed = (iso: string) => dotted(iso, "/");
 const rm = (n: number) => `RM${n.toFixed(2)}`;
 
-/** Splits DOs into pages of 12; on a page the left column fills first, like the paper form. */
-function pages(dos: TripDo[]): (TripDo | undefined)[][][] {
+/**
+ * Splits DOs into pages of 12; on a page the left column fills first, like the paper form.
+ * `spare`: when the last page is full, one more blank page so another DO can still be typed in.
+ */
+function pages(dos: TripDo[], spare = false): (TripDo | undefined)[][][] {
   const out: (TripDo | undefined)[][][] = [];
-  for (let i = 0; i < Math.max(dos.length, 1); i += BOXES) {
+  const n = spare && dos.length && dos.length % BOXES === 0 ? dos.length + 1 : Math.max(dos.length, 1);
+  for (let i = 0; i < n; i += BOXES) {
     const page = dos.slice(i, i + BOXES);
     out.push(Array.from({ length: BOXES / 2 }, (_, r) => [page[r], page[r + BOXES / 2]]));
   }
@@ -73,6 +79,7 @@ export function TripForm(props: Props) {
   const [busy, setBusy] = useState(false);
   const day = props.days[0];
   const missing = props.days.reduce((s, x) => s + x.missingPoints, 0);
+  const notDone = props.days.reduce((s, x) => s + x.notDone, 0);
 
   async function exportExcel() {
     setBusy(true);
@@ -111,8 +118,15 @@ export function TripForm(props: Props) {
         </p>
       )}
 
+      {notDone > 0 && (
+        <p className="text-sm font-medium text-rose-700 print:hidden">
+          {notDone} DO{notDone > 1 ? "s" : ""} given for {daily ? "this day" : "these days"} {notDone > 1 ? "aren't" : "isn't"} delivered (red) and earn no points.
+          {daily ? " Fill in time in and time back, then press SAVE." : " Open that day to fill in the times."}
+        </p>
+      )}
+
       {daily ? (
-        pages(day.dos).map((rows, i) => <DailyPage key={i} {...props} day={day} rows={rows} page={i} filled={filled} setFilled={setFilled} daySaved={daySaved} setDaySaved={setDaySaved} />)
+        pages(day.dos, true).map((rows, i, all) => <DailyPage key={i} {...props} day={day} rows={rows} page={i} spare={i > 0 && i === all.length - 1 && rows.every((pair) => pair.every((x) => !x))} filled={filled} setFilled={setFilled} daySaved={daySaved} setDaySaved={setDaySaved} />)
       ) : (
         <MonthlyPage {...props} remarks={remarks} setRemarks={setRemarks} saved={saved} setSaved={setSaved} />
       )}
@@ -123,6 +137,7 @@ export function TripForm(props: Props) {
 // ---------- On screen / print (PDF) ----------------------------------
 
 const cell = "border border-black px-1.5 py-1";
+const baseCell = cell;
 const head = `${cell} text-left font-bold uppercase`;
 /** Typed-in text is italic, so it stands apart from what the app filled in. */
 const typedText = "italic";
@@ -145,7 +160,8 @@ function Blank({ k, label, filled, setFilled, className = "" }: Filled & { k: st
   );
 }
 
-function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, setFilled, daySaved, setDaySaved, canEditPoints }: Props & Filled & DaySaved & { day: TripDay; rows: (TripDo | undefined)[][]; page: number }) {
+/** `spare`: the extra blank page added after a full one, for typing in more DOs (not printed). */
+function DailyPage({ branch, driver, driverId, lorry, day, rows, page, spare, filled, setFilled, daySaved, setDaySaved, canEditPoints }: Props & Filled & DaySaved & { day: TripDay; rows: (TripDo | undefined)[][]; page: number; spare?: boolean }) {
   // A daily box that saves itself (lorry checks, Trip).
   const note = (k: string, label: string) => (
     <NoteBox
@@ -162,7 +178,8 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, filled, s
   );
   return (
     // Printed: a fixed A4-sized block (190×270mm inside the 10mm margins) with the form centred in it.
-    <div className="trip-page mx-auto w-full max-w-[190mm] bg-white p-3 text-[13px] text-black shadow sm:p-4 sm:text-[11px] print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none">
+    <div className={`${spare ? "print:hidden " : ""}trip-page mx-auto w-full max-w-[190mm] bg-white p-3 text-[13px] text-black shadow sm:p-4 sm:text-[11px] print:flex print:h-[270mm] print:w-[190mm] print:max-w-none print:flex-col print:justify-center print:p-0 print:text-[12px] print:shadow-none`}>
+      {spare && <p className="mb-2 text-xs text-slate-500">Extra page: the one before is full. Type more DOs here.</p>}
       {/* Phones: title + branch above the lorry checks instead of squeezed beside them. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:gap-4 print:flex-row print:gap-4">
         <div className="w-full space-y-2 sm:w-[38%] sm:space-y-4 print:w-[38%] print:space-y-4">
@@ -269,6 +286,9 @@ const FIELDS = Object.keys(LABELS) as Field[];
 
 function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoints }: Filled & { field: Field; row: number; x?: TripDo; at: (field: string) => string; driverId: string; date: string; canPoints: boolean }) {
   const value = x?.[field] ?? "";
+  // Not delivered yet: the whole box is red until the office fills in its times and saves it.
+  const cell = x?.notDone ? `${baseCell} bg-rose-100` : baseCell;
+  const head = `${cell} text-left font-bold uppercase`;
   const blank = (f: string, className?: string) => <Blank k={at(f)} label={f === "points" ? "Points" : LABELS[field]} filled={filled} setFilled={setFilled} className={className} />;
   return (
     <>
@@ -298,7 +318,12 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
         <td className={`${cell} py-0 ${row === 0 ? "font-semibold" : ""}`}>{blank(field)}</td>
       )}
       {row === 0 ? (
-        x?.failed ? (
+        x?.notDone ? (
+          <th className={`${head} p-0 text-center text-[10px]`}>
+            <SaveBox at={at} filled={filled} setFilled={setFilled} driverId={driverId} date={date} doNo={x.doNo} />
+            <span className="hidden text-rose-700 print:inline">NOT DONE</span>
+          </th>
+        ) : x?.failed ? (
           <th className={`${head} text-center text-[10px] text-rose-600`} title={`Failed: ${x.failed}`}>FAILED</th>
         ) : x?.fromTripForm ? (
           <th className={`${head} p-0 text-center text-[10px]`}>
@@ -320,7 +345,7 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
           title={x?.manual ? "Points keyed in by staff" : undefined}
         >
           {/* A real DO's points come from Driver status; typed ones reach the totals once the box is saved. */}
-          {x ? x.points ?? "" : canPoints ? blank("points", "text-center") : ""}
+          {x && !x.notDone ? x.points ?? "" : canPoints ? blank("points", "text-center") : ""}
         </td>
       ) : null}
     </>
@@ -331,7 +356,8 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
  * Saves a typed-in DO box to that DO (one already in the system): delivered by this driver on
  * this day, with the typed times and points, so it joins the totals. The box then fills from the DO.
  */
-function SaveBox({ at, filled, setFilled, driverId, date }: Filled & { at: (field: string) => string; driverId: string; date: string }) {
+/** `doNo`: a DO already on the form (given for this day, not delivered); else the typed DO number. */
+function SaveBox({ at, filled, setFilled, driverId, date, doNo }: Filled & { at: (field: string) => string; driverId: string; date: string; doNo?: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const keys = ["doNo", "location", "timeIn", "timeBack", "points"].map(at);
@@ -347,7 +373,7 @@ function SaveBox({ at, filled, setFilled, driverId, date }: Filled & { at: (fiel
             await recordTripFormDo({
               driverId,
               date,
-              doNo: filled[at("doNo")] ?? "",
+              doNo: doNo ?? filled[at("doNo")] ?? "",
               timeIn: filled[at("timeIn")] ?? "",
               timeBack: filled[at("timeBack")] ?? "",
               points: filled[at("points")] ?? "",
@@ -603,8 +629,9 @@ function dailySheet(wb: Workbook, p: Props, filled: Record<string, string>) {
             : x?.[f];
           put(ws, `${V}${r + k}`, auto || typed, { bold: k === 0, typed: !auto });
         });
-        put(ws, `${R}${r}`, x?.failed ? "FAILED" : "REMARK", { bold: true, center: true });
-        put(ws, `${R}${r + 1}`, x ? x.points ?? "" : filled[boxKey(n, row, side, "points")] ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14, typed: !x });
+        put(ws, `${R}${r}`, x?.failed ? "FAILED" : x?.notDone ? "NOT DONE" : "REMARK", { bold: true, center: true });
+        const real = x && !x.notDone;
+        put(ws, `${R}${r + 1}`, real ? x.points ?? "" : filled[boxKey(n, row, side, "points")] ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14, typed: !real });
         if (x?.manual) for (let k = r + 1; k <= last; k++) ws.getCell(`${R}${k}`).fill = lightBlue;
       });
       // The location line fits two lines of text, or four when it shows the original and updated address.

@@ -9,6 +9,7 @@ import { cleanNote, isNoteField } from "@/lib/trip-form";
 import type { DoStatus } from "@/lib/types";
 import { parseTime, todayMY } from "@/lib/format";
 import { nextTrip, notYourBranch } from "./_shared";
+import { TRIP_FORM_TIME_IN } from "@/lib/delivery-times";
 
 // ---------- Trip planning (Driver status page) -----------------------
 
@@ -206,7 +207,7 @@ export async function recordTripFormDo(input: { driverId: string; date: string; 
   if (error) throw new Error(error.message);
 
   // Time in is read from the latest "out_for_delivery" event.
-  if (timeIn) await supabase.from("status_events").insert({ so_id: d.so_id, do_id: d.id, status: "out_for_delivery", note: "Time in from trip form", created_at: at(timeIn) });
+  if (timeIn) await supabase.from("status_events").insert({ so_id: d.so_id, do_id: d.id, status: "out_for_delivery", note: TRIP_FORM_TIME_IN, created_at: at(timeIn) });
   await supabase.from("status_events").insert({
     so_id: d.so_id,
     do_id: d.id,

@@ -16,7 +16,8 @@ type Dict = (typeof DICT)[Lang];
 // Saved in English (the office reads them); the driver sees them in their language.
 const FAIL_REASONS = ["Customer not available", "Shop closed", "Wrong / unclear address", "Customer rejected goods", "Vehicle problem", "Other"];
 
-export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; driverName: string; lang?: Lang }) {
+/** `locked`: the DO's day has passed, so the driver can't Start, Deliver or Fail it (the office completes it on the trip form). */
+export function JobCard({ job, driverName, lang = "en", locked = false }: { job: DeliveryOrder; driverName: string; lang?: Lang; locked?: boolean }) {
   const t = DICT[lang];
   const [mode, setMode] = useState<"idle" | "deliver" | "fail">("idle");
   const [pending, start] = useTransition();
@@ -104,13 +105,17 @@ export function JobCard({ job, driverName, lang = "en" }: { job: DeliveryOrder; 
 
       {/* Actions */}
       <div className="border-t border-slate-100 p-3">
-        {job.status === "assigned" && (
+        {locked && (job.status === "assigned" || job.status === "out_for_delivery") && (
+          <p className="text-center text-sm text-amber-700">{t.datePassed}</p>
+        )}
+
+        {!locked && job.status === "assigned" && (
           <button disabled={pending} onClick={() => run(() => startDelivery(job.id))} className="btn-kh w-full py-3.5 text-base">
             {pending ? "…" : t.startDelivery}
           </button>
         )}
 
-        {job.status === "out_for_delivery" && mode === "idle" && (
+        {!locked && job.status === "out_for_delivery" && mode === "idle" && (
           <div className="space-y-2">
             {waOnTheWay && (
               <a href={waOnTheWay} target="_blank" className="btn-whatsapp w-full">{t.onTheWay}</a>

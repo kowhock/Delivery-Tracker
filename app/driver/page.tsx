@@ -34,19 +34,16 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
   // Header only: "20 Oct", no year.
   const dayMonth = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString(t.locale, { day: "numeric", month: "short", timeZone: "UTC" });
 
-  // Commission counts what this driver delivered on the day (by delivery time).
-  const dayEnd = new Date(date + "T00:00:00+08:00");
-  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+  // Commission counts this driver's DOs assigned to the day (delivery_date), like the trip form.
   const { data: deliveredRows } = await supabase
     .from("delivery_orders")
     .select("id, driver_id, delivery_date, trip_no, delivered_at, points, points_manual")
     .eq("driver_id", user.id)
     .eq("status", "delivered")
     .eq("cancelled", false)
-    .gte("delivered_at", `${date}T00:00:00+08:00`)
-    .lt("delivered_at", dayEnd.toISOString());
+    .eq("delivery_date", date);
   // Failed attempts earn their points too.
-  const failed = await failedAttempts(supabase, [user.id], `${date}T00:00:00+08:00`, dayEnd.toISOString());
+  const failed = await failedAttempts(supabase, [user.id], date, date);
   const day = dayTotals(withTripPoints([...(deliveredRows ?? []), ...failed])).get(date) ?? { delivered: 0, points: 0, missingPoints: 0 };
 
   const { data } = await supabase
@@ -166,7 +163,7 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
                 {waiting && <span className="font-normal text-slate-400 group-open:hidden">{t.tripLater(waitingOn + 1)}</span>}
               </summary>
               {trip.map((j) => (
-                <JobCard key={j.id} job={j} driverName={profile.full_name} lang={lang} />
+                <JobCard key={j.id} job={j} driverName={profile.full_name} lang={lang} locked={date < today} />
               ))}
               {/* Failed here and since sent out again: read-only, so the driver still sees it and its points. */}
               {tripFailed.map((f) => (

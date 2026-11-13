@@ -54,14 +54,15 @@ export function withTripPoints<T extends TripRow>(rows: T[]): (T & { extraStop: 
 }
 
 /**
- * Groups delivered DOs by Malaysian calendar day of delivery. Failed attempts (`failed`, dated
- * by when they failed) earn their points too but aren't counted as delivered.
+ * Groups delivered DOs by the day the office assigned them (delivery_date), not the day Delivered was
+ * pressed: a DO counts on its own day's trip form. Failed attempts (`failed`) earn their points too but
+ * aren't counted as delivered.
  */
-export function dayTotals(rows: { delivered_at: string | null; points: number | null; failed?: boolean }[]) {
+export function dayTotals(rows: { delivery_date: string | null; points: number | null; failed?: boolean }[]) {
   const days = new Map<string, { delivered: number; points: number; missingPoints: number }>();
   for (const r of rows) {
-    if (!r.delivered_at) continue;
-    const day = new Date(r.delivered_at).toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    if (!r.delivery_date) continue;
+    const day = r.delivery_date;
     const t = days.get(day) ?? { delivered: 0, points: 0, missingPoints: 0 };
     if (!r.failed) t.delivered += 1;
     if (r.points == null) t.missingPoints += 1;
