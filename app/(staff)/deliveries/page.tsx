@@ -3,7 +3,7 @@ import { requireStaff } from "@/lib/auth";
 import { driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
 import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
-import { DO_STATUSES, TIME_SLOTS, type DeliveryOrder, type DoStatus, type Outstanding, type Profile } from "@/lib/types";
+import { DO_STATUSES, TIME_SLOTS, lorryLabel, type DeliveryOrder, type DoStatus, type Lorry, type Outstanding, type Profile } from "@/lib/types";
 import { getStaffT } from "@/lib/staff-lang";
 import { AssignDriver } from "@/components/AssignDriver";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
@@ -109,7 +109,8 @@ export default async function DeliveriesPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses, withVoid = false): Q => {
     // Voided special orders stay on the board (marked VOID) but out of the counts.
-    query = (withVoid ? query.or("cancelled.eq.false,voided_at.not.is.null") : query.eq("cancelled", false)).in("status", st);
+    // DOs marked cancelled in the app come back only in a search, so they can be found and undone.
+    query = (withVoid ? query.or(`cancelled.eq.false,voided_at.not.is.null${term ? ",office_cancelled_at.not.is.null" : ""}`) : query.eq("cancelled", false)).in("status", st);
     if (!showOc) query = query.eq("is_oc", false);
     if (!showSupplier) query = query.eq("supplier_delivery", false);
     if (locked) query = query.or(deliveredOrSoldBy(locked));
@@ -124,7 +125,7 @@ export default async function DeliveriesPage({
 
   // Long ranges ("All dates") load the newest PAGE DOs; "Load more" adds the next PAGE.
   const limit = Math.min(Math.max(Number(sp.n) || PAGE, PAGE), MAX_LOADED);
-  const [{ data, count }, { data: driverRows }, { data: sync }, { count: failedCount }] = await Promise.all([
+  const [{ data, count }, { data: driverRows }, { data: sync }, { count: failedCount }, { data: trailerRows }] = await Promise.all([
     filtered(
       supabase
         .from("delivery_orders")
@@ -143,7 +144,13 @@ export default async function DeliveriesPage({
     supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle(),
     // Failed DOs are hidden from the other filters; their count goes on the Failed tab so none get missed.
     filtered(supabase.from("delivery_orders").select("id", { count: "exact", head: true }), ["failed"]),
+    // Trailers: shared by every branch, offered under "Assign other branch" → Trailer.
+    supabase.from("lorries").select("id, lorry_no, plate_no").eq("is_trailer", true),
   ]);
+  const trailers = ((trailerRows ?? []) as Pick<Lorry, "id" | "lorry_no" | "plate_no">[])
+    .sort((a, b) => a.lorry_no.localeCompare(b.lorry_no, undefined, { numeric: true }))
+    .map((l) => ({ id: l.id, label: lorryLabel(l) }));
+  const trailerOf = (id: string | null | undefined) => (id ? (trailers.find((x) => x.id === id) ?? { id, label: "?" }) : null);
   // Newest were fetched first; cards still read oldest → newest.
   const jobs = await withStartedAt(supabase, ((data ?? []) as DeliveryOrder[]).reverse());
   const total = count ?? jobs.length;
@@ -333,18 +340,25 @@ export default async function DeliveriesPage({
                   {col.map((j) => {
                     // Only the delivering branch (or the branch it was handed over to) picks the driver and day; others just follow along.
                     const mine = canPlan(profile.branch, j.branch, j.helper_branch);
-                    const plannable = mine && PLANNABLE.includes(j.status) && !j.voided_at;
+                    const plannable = mine && PLANNABLE.includes(j.status) && !j.voided_at && !j.office_cancelled_at;
                     const who = { ...profile, id: user.id };
                     const late = j.status !== "delivered" && j.delivery_date < today;
                     const open = j.outstanding ?? [];
+                    // "Mark cancelled" (AutoCount cancelled it, the sync missed it): the DO's own branch or an admin, before it's on the road.
+                    const canOfficeCancel = j.source === "autocount" && (profile.role === "admin" || canPlan(profile.branch, j.branch))
+                      && (j.office_cancelled_at ? true : PLANNABLE.includes(j.status) && !j.cancelled);
                     return (
-                      <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""} ${j.voided_at ? "opacity-60" : ""}`}>
+                      <article key={j.id} className={`card space-y-2 p-3 ${open.length ? "border-rose-500 ring-1 ring-rose-500" : ""} ${j.voided_at || j.office_cancelled_at ? "opacity-60" : ""}`}>
                         <div className="flex items-center justify-between gap-2 text-xs">
                           <span className="flex items-center gap-1.5 font-semibold text-slate-900">
                             <DoOutstanding doId={j.id} doNo={j.do_no} customer={j.customer_name} createdAt={j.created_at} docDate={j.doc_date} open={open} history={profile.role === "admin"} photo={!!j.pod_photo_path}
                               // Only the DO's own branch assigns it to (or takes it back from) another branch.
                               print={j.source === "special" && canPrintSpecial(j, who) ? { printed: j.print_count } : undefined}
-                              handOver={plannable && !j.is_oc && j.branch && canPlan(profile.branch, j.branch) ? { branch: j.branch, helper: j.helper_branch, hasDriver: !!j.driver_id } : undefined}
+                              // A DO delivered by a trailer can still be moved to another trailer or taken back here.
+                              officeCancel={canOfficeCancel ? { reason: j.office_cancelled_at ? (j.office_cancel_reason ?? "") : null } : undefined}
+                              handOver={(plannable || (mine && j.trailer_id && !j.voided_at)) && !j.is_oc && j.branch && canPlan(profile.branch, j.branch)
+                                ? { branch: j.branch, helper: j.helper_branch, hasDriver: !!j.driver_id, trailer: trailerOf(j.trailer_id), trailers }
+                                : undefined}
                             />
                           </span>
                           <span className="flex items-center gap-2">
@@ -356,6 +370,12 @@ export default async function DeliveriesPage({
                             <BranchTags job={j} />
                           </span>
                         </div>
+                        {j.office_cancelled_at && (
+                          <p className="-mt-1.5 text-xs text-rose-700">
+                            <span className="mr-1 rounded bg-rose-600 px-1.5 font-bold text-white">{t.officeCancel.cancelled}</span>
+                            {j.office_cancel_reason}
+                          </p>
+                        )}
                         {j.is_oc && <p className="-mt-1.5 text-xs font-medium text-violet-600">{T.ocCollects}</p>}
                         {(j.links?.length || j.so_no) && (
                           <p className="-mt-1.5 text-xs text-slate-400">{j.links?.length ? j.links.map((l) => l.so_no).join(", ") : j.so_no}</p>
@@ -430,7 +450,7 @@ export default async function DeliveriesPage({
                           </div>
                         ) : (
                           <div className="space-y-0.5 text-xs text-slate-500">
-                            <p>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</p>
+                            <p>{j.trailer_id ? `🚛 ${T.byTrailer(trailerOf(j.trailer_id)!.label)}` : <>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</>}</p>
                             <p className={late ? "text-rose-600" : ""}>📅 {date(j.delivery_date)}{late && T.late}</p>
                             {j.time_slot && <p>🕒 {t.estimated(TIME_SLOTS[j.time_slot])}</p>}
                             {!mine && (

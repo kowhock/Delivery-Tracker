@@ -42,7 +42,9 @@ function Modal({ title, subtitle, onClose, children }: { title: string; subtitle
 function lorryStatus(lorry: Lorry, jobs: LorryJobs | undefined, today: string): [string, string] {
   return inMaintenance(lorry, today)
     ? [`Under maintenance${lorry.maintenance_to ? ` until ${fmtDate(lorry.maintenance_to)}` : ""}`, "bg-amber-100 text-amber-800"]
-    : !lorry.driver_id
+    : lorry.is_trailer
+      ? ["Trailer · all branches", "bg-violet-100 text-violet-800"]
+      : !lorry.driver_id
       ? ["Spare", "bg-slate-100 text-slate-600"]
       : jobs?.onRoad.length
         ? [`On the road · ${jobs.onRoad.join(", ")}`, "bg-blue-100 text-blue-800"]
@@ -166,8 +168,8 @@ export function Lorries({
         ws.addRow({
           no: l.lorry_no,
           plate: l.plate_no ?? "",
-          branch: l.branch ? branchName(l.branch) : "",
-          driver: l.driver_id ? name(l.driver_id) : "Spare",
+          branch: l.is_trailer ? "Trailer (all branches)" : l.branch ? branchName(l.branch) : "",
+          driver: l.is_trailer ? "" : l.driver_id ? name(l.driver_id) : "Spare",
           status: lorryStatus(l, l.driver_id ? jobs[l.driver_id] : undefined, today)[0],
           from: l.maintenance_from ? fmtDate(l.maintenance_from) : "",
           to: l.maintenance_to ? fmtDate(l.maintenance_to) : "",
@@ -190,6 +192,7 @@ export function Lorries({
 
   /** The driver dropdown, the same in both views. */
   function driverSelect(l: Lorry) {
+    if (l.is_trailer) return <p className="py-2 text-sm text-slate-500">No driver — a trailer, shared by all branches</p>;
     const choices = drivers.filter((d) => !l.branch || !d.branch || d.branch === l.branch || d.branch === l.borrow_branch || d.id === l.driver_id);
     return (
       <select
@@ -226,7 +229,7 @@ export function Lorries({
   /** Maintenance and Borrow to / Take back: the owning branch only. */
   function maintenanceButtons(l: Lorry) {
     if (!owns(l)) return null;
-    const borrow = l.borrow_branch ? (
+    const borrow = l.is_trailer ? null : l.borrow_branch ? (
       <button type="button" disabled={pending} onClick={() => setTakingBack(l)} className="btn-secondary py-1.5 text-xs">
         ↩ Take back
       </button>
@@ -303,7 +306,7 @@ export function Lorries({
                 <tr key={l.id} className={inMaintenance(l, today) ? "bg-amber-50/50" : ""}>
                   <td className="whitespace-nowrap px-4 py-2 font-semibold">{l.lorry_no}</td>
                   <td className="whitespace-nowrap px-4 py-2">{l.plate_no || <span className="text-slate-400">—</span>}</td>
-                  <td className="whitespace-nowrap px-4 py-2">{l.branch ? branchName(l.branch) : <span className="text-slate-400">—</span>}</td>
+                  <td className="whitespace-nowrap px-4 py-2">{l.is_trailer ? "All branches" : l.branch ? branchName(l.branch) : <span className="text-slate-400">—</span>}</td>
                   <td className="px-4 py-2">
                     <div className="flex flex-wrap gap-1.5">
                       <StatusBadge lorry={l} jobs={l.driver_id ? jobs[l.driver_id] : undefined} today={today} />
@@ -318,7 +321,7 @@ export function Lorries({
                   <td className="px-4 py-2">
                     <div className="flex flex-nowrap items-center justify-end gap-2">
                       {maintenanceButtons(l)}
-                      {owns(l) && (
+                      {owns(l) && (!l.is_trailer || !lockedBranches) && (
                         <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
                           Edit
                         </button>
@@ -338,13 +341,13 @@ export function Lorries({
               <section key={l.id} className={`card flex flex-col gap-3 p-4 ${inMaintenance(l, today) ? "border-amber-300" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-semibold tracking-tight">Lorry {l.lorry_no}</h2>
+                    <h2 className="text-lg font-semibold tracking-tight">{l.is_trailer ? "Trailer" : "Lorry"} {l.lorry_no}</h2>
                     <p className="text-sm text-slate-500">
                       {l.plate_no || "No plate number"}
-                      {l.branch && ` · ${branchName(l.branch)}`}
+                      {l.is_trailer ? " · All branches" : l.branch && ` · ${branchName(l.branch)}`}
                     </p>
                   </div>
-                  {owns(l) && (
+                  {owns(l) && (!l.is_trailer || !lockedBranches) && (
                     <button type="button" onClick={() => setEditing(l)} className="text-sm font-medium text-slate-500 hover:text-slate-900">
                       Edit
                     </button>
@@ -550,6 +553,7 @@ function BorrowForm({ lorry, onClose, onSave }: { lorry: Lorry; onClose: () => v
 
 function LorryForm({ lorry, branch, lockedBranches, onClose }: { lorry: Lorry | null; branch: string | null; lockedBranches: string[] | null; onClose: () => void }) {
   const { save, error, pending } = useSave(saveLorry, onClose);
+  const [trailer, setTrailer] = useState(!!lorry?.is_trailer);
   return (
     <Modal title={lorry ? `Edit lorry ${lorry.lorry_no}` : "Add lorry"} onClose={onClose}>
       <form action={save} className="space-y-4">
@@ -564,7 +568,20 @@ function LorryForm({ lorry, branch, lockedBranches, onClose }: { lorry: Lorry | 
             <input name="plate_no" defaultValue={lorry?.plate_no ?? ""} placeholder="JQN 9833" className="input uppercase" />
           </label>
         </div>
-        {(!lockedBranches || lockedBranches.length > 1) && (
+        {/* A trailer is shared by every branch, so only staff not kept to their own branches set it. */}
+        {!lockedBranches && (
+          <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 p-3">
+            <input type="checkbox" name="is_trailer" checked={trailer} onChange={(e) => setTrailer(e.target.checked)} className="mt-0.5 size-4" />
+            <span>
+              <span className="block font-medium">Trailer</span>
+              <span className="block text-xs text-slate-500">
+                Shared by all branches, no driver. Any branch can put a DO on it under “Assign other branch”.
+                {lorry?.driver_id && trailer && " The driver on it now is taken off."}
+              </span>
+            </span>
+          </label>
+        )}
+        {!trailer && (!lockedBranches || lockedBranches.length > 1) && (
           <label className="block">
             <span className="label">Branch</span>
             <select name="branch" defaultValue={lorry?.branch ?? branch ?? ""} className="input">

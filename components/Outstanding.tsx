@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { addOutstanding, clearOutstanding, getDoHistory, getDoItems, getPodPhotoUrls } from "@/app/actions";
 import { fmtDate, fmtDateTime, fmtQty } from "@/lib/format";
 import { HandOver, type HandOverInfo } from "@/components/HandOver";
+import { OfficeCancel } from "@/components/OfficeCancel";
 import { useStaffT } from "@/components/StaffLang";
 import { EVENT_LABEL, type DoItem, type Outstanding, type OutstandingTodo, type StatusEvent, type DoStatus } from "@/lib/types";
 
@@ -42,6 +43,8 @@ export function ClearButton({ id }: { id: string }) {
  * `docDate`: the AutoCount Doc Date, shown under the customer.
  * `createdAt`: when the DO came into the system; shown instead when there's no Doc Date (special DOs).
  * `handOver`: the user can assign the DO to another branch to deliver (its own branch only).
+ * `officeCancel`: the user can mark the DO cancelled (AutoCount cancelled it, the sync missed it) or undo that;
+ *   `reason` is set once it's marked.
  */
 export function DoOutstanding({
   doId,
@@ -53,6 +56,7 @@ export function DoOutstanding({
   createdAt,
   docDate,
   handOver,
+  officeCancel,
   print,
 }: {
   doId: string;
@@ -64,6 +68,7 @@ export function DoOutstanding({
   createdAt?: string;
   docDate?: string | null;
   handOver?: HandOverInfo;
+  officeCancel?: { reason: string | null };
   /** Special orders the user may print (lib/special.ts canPrintSpecial): a Print button in the popup. */
   print?: { printed: number };
 }) {
@@ -175,6 +180,7 @@ export function DoOutstanding({
                 )}
               </div>
               {history && events && <History events={events} />}
+              {officeCancel && <OfficeCancel doId={doId} doNo={doNo} reason={officeCancel.reason} />}
             </div>
 
             <div className="flex items-end justify-between gap-3 border-t border-slate-100 px-5 py-3">

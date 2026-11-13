@@ -4,17 +4,17 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireStaff } from "@/lib/auth";
 import { fmtDate } from "@/lib/format";
-import { branchName, branchToSave, canPlan, hasLorries, userBranches } from "@/lib/branches";
+import { branchName, branchToSave, canPlan, hasLorries, lockedBranches, userBranches } from "@/lib/branches";
 
 // ---------- Lorries ---------------------------------------------------
 
 const notYourLorry = (branch: string) => `This lorry belongs to ${branchName(branch)} — only ${branchName(branch)} can change it.`;
 
-type LorryRow = { id: string; lorry_no: string; branch: string | null; driver_id: string | null; borrow_branch: string | null };
+type LorryRow = { id: string; lorry_no: string; branch: string | null; driver_id: string | null; borrow_branch: string | null; is_trailer: boolean };
 
 /** The lorry, if the user's branch owns it — or, with `borrower`, has borrowed it (driver changes only). */
 async function lorryForEdit(supabase: SupabaseClient, profile: { branch: string | null }, id: string, borrower = false) {
-  const { data: l } = await supabase.from("lorries").select("id, lorry_no, branch, driver_id, borrow_branch").eq("id", id).single();
+  const { data: l } = await supabase.from("lorries").select("id, lorry_no, branch, driver_id, borrow_branch, is_trailer").eq("id", id).single();
   if (!l) throw new Error("Lorry not found.");
   if (!canPlan(profile.branch, l.branch, borrower ? l.borrow_branch : null)) throw new Error(notYourLorry(l.branch));
   return l as LorryRow;
@@ -27,24 +27,46 @@ function revalidateLorries() {
   revalidatePath("/trip-form");
 }
 
-/** Adds a lorry, or (with an id) changes its number / plate / branch. */
+/**
+ * Adds a lorry, or (with an id) changes its number / plate / branch / Trailer tick.
+ * A trailer is shared by every branch: no branch and no driver (a driver on it comes off).
+ * Only staff who aren't kept to their own branches add trailers or change them.
+ */
 export async function saveLorry(formData: FormData): Promise<{ error?: string }> {
   const { supabase, profile } = await requireStaff();
   const get = (k: string) => String(formData.get(k) ?? "").trim();
   const id = get("id");
   const lorryNo = get("lorry_no");
   if (!lorryNo) return { error: "Key in the lorry number." };
+  const trailer = formData.get("is_trailer") === "on";
+  const locked = lockedBranches(profile);
+  const before = id ? await lorryForEdit(supabase, profile, id) : null;
+  if (locked && (trailer || before?.is_trailer)) return { error: "Trailers are shared by every branch — ask an admin to add or change one." };
   const row = {
     lorry_no: lorryNo,
     plate_no: get("plate_no").toUpperCase() || null,
-    branch: branchToSave(profile, get("branch") || null), // dispatchers only keep their own branches' lorries
+    is_trailer: trailer,
+    ...(trailer
+      ? { branch: null, driver_id: null, borrow_branch: null }
+      : { branch: branchToSave(profile, get("branch") || null) }), // dispatchers only keep their own branches' lorries
   };
-  if (id) await lorryForEdit(supabase, profile, id);
+  let driverOff = "";
+  if (trailer && before?.driver_id) {
+    const { data: d } = await supabase.from("profiles").select("full_name").eq("id", before.driver_id).single();
+    driverOff = d?.full_name ?? "the driver";
+  }
   const { data, error } = id
     ? await supabase.from("lorries").update(row).eq("id", id).select("id").single()
     : await supabase.from("lorries").insert(row).select("id").single();
   if (error) return { error: error.code === "23505" ? `Lorry ${lorryNo} already exists.` : error.message };
-  await supabase.from("lorry_events").insert({ lorry_id: data.id, note: id ? "Details changed" : "Lorry added" });
+  const note = !id
+    ? trailer ? "Trailer added" : "Lorry added"
+    : trailer && !before?.is_trailer
+      ? `Made a trailer (all branches)${driverOff ? ` · ${driverOff} taken off` : ""}`
+      : !trailer && before?.is_trailer
+        ? "No longer a trailer"
+        : "Details changed";
+  await supabase.from("lorry_events").insert({ lorry_id: data.id, note });
   revalidateLorries();
   return {};
 }
@@ -53,6 +75,7 @@ export async function saveLorry(formData: FormData): Promise<{ error?: string }>
 export async function setLorryDriver(lorryId: string, driverId: string | null) {
   const { supabase, profile } = await requireStaff();
   const lorry = await lorryForEdit(supabase, profile, lorryId, true); // the branch borrowing it can change its driver too
+  if (driverId && lorry.is_trailer) throw new Error(`${lorry.lorry_no} is a trailer — trailers have no driver.`);
   if (lorry.driver_id === driverId) return;
 
   const names = new Map<string, string>();

@@ -579,6 +579,114 @@ export async function setHelperBranch(doId: string, helper: string | null) {
 }
 
 /**
+ * "Mark cancelled": the DO was cancelled (or deleted) in AutoCount but the sync missed it, so it
+ * still waits on the board. The DO's own branch or an admin marks it, with a reason; it then counts
+ * as cancelled everywhere. The database keeps it cancelled through later syncs (keep_office_cancel).
+ * AutoCount DOs only (special DOs are voided by an admin), and only before it's out for delivery.
+ */
+async function officeCancelDo(doId: string) {
+  const { supabase, user, profile } = await requireStaff();
+  const { data: d } = await supabase
+    .from("delivery_orders")
+    .select("so_id, do_no, source, status, branch, cancelled, office_cancelled_at")
+    .eq("id", doId)
+    .single();
+  if (!d) throw new Error("DO not found.");
+  if (profile.role !== "admin" && !canPlan(profile.branch, d.branch)) throw new Error(`Only ${branchName(d.branch)} or an admin can do this.`);
+  return { supabase, user, d };
+}
+
+export async function markDoCancelled(doId: string, reason: string) {
+  const why = reason.trim();
+  if (!why) throw new Error("Enter why it's cancelled.");
+  if (why.length > 200) throw new Error("Keep the reason under 200 characters.");
+  const { supabase, user, d } = await officeCancelDo(doId);
+  if (d.source !== "autocount") throw new Error("Special DOs are voided by an admin instead.");
+  if (d.cancelled) throw new Error(`${d.do_no} is already cancelled.`);
+  if (!["pending", "assigned", "failed"].includes(d.status)) throw new Error("This DO is already on the road or delivered.");
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({ office_cancelled_at: new Date().toISOString(), office_cancelled_by: user.id, office_cancel_reason: why, cancelled: true })
+    .eq("id", doId);
+  if (error) throw new Error(error.message);
+  await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: d.status, note: `Marked cancelled (missed from AutoCount): ${why}` });
+  revalidateBoards();
+}
+
+/** Undoes "Mark cancelled": back on the board as it was. A later AutoCount sync still applies AutoCount's own Cancelled. */
+export async function undoDoCancelled(doId: string) {
+  const { supabase, d } = await officeCancelDo(doId);
+  if (!d.office_cancelled_at) return;
+  const { error } = await supabase
+    .from("delivery_orders")
+    .update({ office_cancelled_at: null, office_cancelled_by: null, office_cancel_reason: null, cancelled: false })
+    .eq("id", doId);
+  if (error) throw new Error(error.message);
+  await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: d.status, note: "Mark cancelled undone" });
+  revalidateBoards();
+}
+
+function revalidateBoards() {
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+  revalidatePath("/outstanding");
+  revalidatePath("/trip-form");
+}
+
+/**
+ * "Assign other branch" → Trailer: the DO is delivered by a trailer (shared by every branch, no
+ * driver), so it is delivered right away, with no driver and so no points or commission.
+ * null = Take back: the DO goes back to Unassigned. The DO's own branch only, like a hand-over.
+ */
+export async function setTrailer(doId: string, trailerId: string | null) {
+  const { supabase, profile } = await requireStaff();
+  const { data: d } = await supabase
+    .from("delivery_orders")
+    .select("so_id, status, branch, driver_id, is_oc, cancelled, voided_at, trailer_id")
+    .eq("id", doId)
+    .single();
+  if (!d) throw new Error("DO not found.");
+  if (!canPlan(profile.branch, d.branch)) throw new Error(`Only ${branchName(d.branch)} can put this DO on a trailer.`);
+  if (d.cancelled || d.voided_at) throw new Error("This DO is cancelled.");
+  if (trailerId === d.trailer_id) return;
+
+  if (trailerId === null) {
+    // Undo: back to Unassigned, not delivered.
+    const { data: t } = await supabase.from("lorries").select("lorry_no").eq("id", d.trailer_id).maybeSingle();
+    const { error } = await supabase
+      .from("delivery_orders")
+      .update({ trailer_id: null, lorry_id: null, status: "pending", delivered_at: null })
+      .eq("id", doId);
+    if (error) throw new Error(error.message);
+    await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: "pending", note: `Taken back from trailer ${t?.lorry_no ?? ""}`.trim() });
+  } else {
+    if (d.is_oc) throw new Error("O/C DOs are collected at the store, so they can't go on a trailer.");
+    if (d.driver_id) throw new Error("Take the driver off this DO first.");
+    // Changing from one trailer to another keeps it delivered; otherwise it must still be waiting.
+    if (!d.trailer_id && !["pending", "assigned", "failed"].includes(d.status)) throw new Error("This DO is already on the road or delivered.");
+    const { data: t } = await supabase.from("lorries").select("id, lorry_no, is_trailer").eq("id", trailerId).maybeSingle();
+    if (!t?.is_trailer) throw new Error("Pick a trailer.");
+    const { error } = await supabase
+      .from("delivery_orders")
+      .update({
+        trailer_id: t.id,
+        lorry_id: t.id,
+        status: "delivered", // delivered now (delivered_at set by the database)
+        helper_branch: null,
+        supplier_delivery: false,
+        failed_reason: null,
+      })
+      .eq("id", doId);
+    if (error) throw new Error(error.message);
+    await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: "delivered", note: `Delivered by trailer ${t.lorry_no}` });
+  }
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/lorries");
+}
+
+/**
  * M- DOs (inter-company invoices): the office types the items, one per line ("Cement x 1 bag"), since
  * AutoCount sends none for invoices. Admins and the delivering (or helping) branch, until delivered.
  * Returns why not instead of throwing, so the message isn't hidden in production. lib/item-note.ts.

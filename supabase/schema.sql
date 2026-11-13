@@ -66,7 +66,9 @@ create table public.lorries (
   maintenance_from date,                       -- set = under (or booked for) maintenance from this day
   maintenance_to   date,                       -- expected back; null = not known yet
   maintenance_note text,
-  created_at       timestamptz not null default now()
+  is_trailer       boolean not null default false, -- shared by every branch: no branch, never a driver
+  created_at       timestamptz not null default now(),
+  constraint lorries_trailer_check check (not is_trailer or (branch is null and driver_id is null and borrow_branch is null))
 );
 
 -- History: driver changes and maintenance, newest first on the Lorries page.
@@ -175,6 +177,10 @@ create table public.delivery_orders (
   supplier_delivery boolean not null default false, -- the supplier delivers it: no driver, delivered when picked
   driver_id      uuid references public.profiles on delete set null,
   lorry_id       uuid references public.lorries on delete set null, -- lorry it was delivered with (set when delivered)
+  trailer_id     uuid references public.lorries on delete set null, -- delivered by this trailer (no driver; delivered when picked)
+  office_cancelled_at  timestamptz,               -- "Mark cancelled": cancelled in AutoCount but the sync missed it (keeps cancelled = true)
+  office_cancelled_by  uuid references public.profiles on delete set null,
+  office_cancel_reason text check (length(office_cancel_reason) <= 200),
   trip_no        int not null default 1 check (trip_no > 0), -- which trip of the driver's day
   trip_seq       int not null default 0,                     -- stop order inside the trip
   status         public.do_status not null default 'pending',
@@ -433,6 +439,20 @@ end $$;
 create trigger guard_delivery_order
   before update on public.delivery_orders
   for each row execute function public.guard_delivery_order();
+
+-- "Mark cancelled" (office_cancelled_at) wins over the AutoCount sync, which only writes cancelled.
+create or replace function public.keep_office_cancel() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.office_cancelled_at is not null then
+    new.cancelled := true;
+  end if;
+  return new;
+end $$;
+
+create trigger keep_office_cancel
+  before insert or update on public.delivery_orders
+  for each row execute function public.keep_office_cancel();
 
 -- Only admins and dispatchers an admin ticked (profiles.points_edit) change points by hand: keyed-in
 -- points, back to the distance rule, or the address used for points (map_address). The distance

@@ -88,6 +88,7 @@ const en = {
     branchTitle: "Branch (★ = mine)",
     allShort: "All",
     supplierDelivery: "Supplier delivery",
+    byTrailer: (label: string) => `Delivered by trailer ${label} (no driver)`,
     edit: "Edit",
     open: "Open",
     ocCollects: "O/C (customer collects)",
@@ -152,14 +153,34 @@ const en = {
   handOver: {
     assignOther: "Assign other branch",
     delivering: (name: string) => `${name} delivering · change`,
-    takeDriverOff: "Take the driver off this DO first, then assign it to another branch.",
+    takeDriverOff: "Take the driver off this DO first, then assign it to another branch or a trailer.",
     aria: "Branch to deliver this DO",
     choose: "Choose branch…",
     assign: "Assign",
     takeBack: "Take back",
+    trailer: "Trailer (no driver)",
+    chooseTrailer: "Choose trailer…",
+    trailerAria: "Trailer delivering this DO",
+    noTrailers: "No trailers yet — tick “Trailer” on a lorry in Lorries.",
+    trailerNote: "Delivered right away · no driver, no points or commission.",
+    onTrailer: (label: string) => `🚛 Trailer ${label} · change`,
+    trailerUndo: "Take back (back to Unassigned)",
   },
 
   // DO popup (items, photo, history, add remark)
+  // "Mark cancelled": AutoCount cancelled the DO but the sync missed it.
+  officeCancel: {
+    heading: "Cancelled in AutoCount but still here?",
+    hint: "Mark it cancelled: it leaves the board, the driver's jobs and commission. Undo any time.",
+    reason: "Why (e.g. cancelled in AutoCount by Ali)",
+    mark: "Mark cancelled",
+    marking: "Saving…",
+    cancelled: "CANCELLED",
+    by: (reason: string) => `Marked cancelled: ${reason}`,
+    undo: "Undo cancel",
+    confirm: (doNo: string) => `Mark ${doNo} cancelled? It comes off the board, the driver's jobs and commission.`,
+  },
+
   popup: {
     title: "See items / add remark",
     titlePhoto: "See items, delivery photo / add remark",
@@ -371,6 +392,7 @@ const zh: StaffDict = {
     branchTitle: "分行（★ = 我的）",
     allShort: "全部",
     supplierDelivery: "供应商送货",
+    byTrailer: (label) => `由拖车 ${label} 送达（无司机）`,
     edit: "编辑",
     open: "打开",
     ocCollects: "O/C（顾客自取）",
@@ -433,11 +455,30 @@ const zh: StaffDict = {
   handOver: {
     assignOther: "交给其他分行",
     delivering: (name) => `${name} 负责送货 · 更改`,
-    takeDriverOff: "请先把司机从此 DO 移除，再交给其他分行。",
+    takeDriverOff: "请先把司机从此 DO 移除，再交给其他分行或拖车。",
     aria: "负责送此 DO 的分行",
     choose: "选择分行…",
     assign: "分配",
     takeBack: "收回",
+    trailer: "拖车（无司机）",
+    chooseTrailer: "选择拖车…",
+    trailerAria: "负责送此 DO 的拖车",
+    noTrailers: "还没有拖车 — 请在「罗里」页把罗里勾选为「拖车」。",
+    trailerNote: "立即标记为已送达 · 无司机，不计分数和佣金。",
+    onTrailer: (label) => `🚛 拖车 ${label} · 更改`,
+    trailerUndo: "收回（回到未分配）",
+  },
+
+  officeCancel: {
+    heading: "AutoCount 已取消但仍在这里？",
+    hint: "标记为已取消：从看板、司机任务和佣金中移除。可随时撤销。",
+    reason: "原因（例如：Ali 已在 AutoCount 取消）",
+    mark: "标记为已取消",
+    marking: "保存中…",
+    cancelled: "已取消",
+    by: (reason) => `已标记取消：${reason}`,
+    undo: "撤销取消",
+    confirm: (doNo) => `确定把 ${doNo} 标记为已取消？它会从看板、司机任务和佣金中移除。`,
   },
 
   popup: {

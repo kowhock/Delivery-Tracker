@@ -75,3 +75,38 @@ end $$;
 -- New empty column: no existing rows change. The AutoCount sync never writes it; drivers can't
 -- change it (guard_delivery_order keeps every column the driver app doesn't set).
 alter table public.delivery_orders add column if not exists item_note text check (length(item_note) <= 1000);
+
+-- 2026-11-13: Trailers. A lorry can be ticked "Trailer": shared by every branch, so it has no branch
+-- and never a driver. A DO's own branch can hand the DO to a trailer (DO popup → Assign other branch
+-- → Trailer): it is delivered right away with no driver (so no points or commission), and
+-- delivery_orders.trailer_id (and lorry_id) record the trailer. Taking it back puts the DO back in
+-- Unassigned. New columns only: existing lorries stay normal lorries, existing DOs have no trailer.
+alter table public.lorries add column if not exists is_trailer boolean not null default false;
+alter table public.lorries drop constraint if exists lorries_trailer_check;
+alter table public.lorries add constraint lorries_trailer_check
+  check (not is_trailer or (branch is null and driver_id is null and borrow_branch is null));
+alter table public.delivery_orders add column if not exists trailer_id uuid references public.lorries on delete set null;
+
+-- 2026-11-13: "Mark cancelled" for AutoCount DOs the sync missed (cancelled or deleted in AutoCount, but
+-- the 5-minute sync only fetches documents whose Last Modified changed). The DO's own branch or an
+-- admin marks it in the DO popup with a reason; it then counts as cancelled everywhere (cancelled = true).
+-- The office_cancel_* columns are the app's own: the AutoCount sync never writes them, and the trigger
+-- keeps cancelled = true while they're set, so a later sync can't bring the DO back. Undo clears them.
+-- New empty columns + trigger: no existing rows change.
+alter table public.delivery_orders add column if not exists office_cancelled_at timestamptz;
+alter table public.delivery_orders add column if not exists office_cancelled_by uuid references public.profiles on delete set null;
+alter table public.delivery_orders add column if not exists office_cancel_reason text check (length(office_cancel_reason) <= 200);
+
+create or replace function public.keep_office_cancel() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.office_cancelled_at is not null then
+    new.cancelled := true;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists keep_office_cancel on public.delivery_orders;
+create trigger keep_office_cancel
+  before insert or update on public.delivery_orders
+  for each row execute function public.keep_office_cancel();

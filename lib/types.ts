@@ -98,6 +98,9 @@ export type DeliveryOrder = {
   supplier_delivery: boolean; // the supplier delivers it: no driver, delivered when picked
   driver_id: string | null;
   lorry_id: string | null; // lorry it was delivered with (set when delivered)
+  trailer_id?: string | null; // delivered by this trailer: no driver, delivered when picked (setTrailer)
+  office_cancelled_at?: string | null; // "Mark cancelled": AutoCount cancelled it but the sync missed it (keeps cancelled = true)
+  office_cancel_reason?: string | null;
   trip_no: number;
   trip_seq: number;
   status: DoStatus;
@@ -183,6 +186,7 @@ export type Lorry = {
   maintenance_to: string | null; // expected back; null = not known yet
   maintenance_note: string | null;
   borrow_branch: string | null; // "Borrow to": lent to this branch, which can put its own driver on it
+  is_trailer: boolean; // shared by every branch: no branch, never a driver; DOs are handed to it (DeliveryOrder.trailer_id)
 };
 
 /** "JQN 9833 (46)", as on the trip forms; just "46" without a plate. */
