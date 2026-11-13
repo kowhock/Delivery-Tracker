@@ -179,6 +179,7 @@ create table public.delivery_orders (
   lorry_id       uuid references public.lorries on delete set null, -- lorry it was delivered with (set when delivered)
   trailer_id     uuid references public.lorries on delete set null, -- delivered by this trailer (no driver; delivered when picked)
   outsource_trailer boolean not null default false, -- delivered by an outside company's trailer (no lorry in the app; delivered when picked)
+  outsource_name text check (length(outsource_name) <= 60), -- which company (lib/trailer.ts OUTSOURCE_COMPANIES)
   office_cancelled_at  timestamptz,               -- "Mark cancelled": cancelled in AutoCount but the sync missed it (keeps cancelled = true)
   office_cancelled_by  uuid references public.profiles on delete set null,
   office_cancel_reason text check (length(office_cancel_reason) <= 200),

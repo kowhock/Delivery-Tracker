@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { requireStaff } from "@/lib/auth";
 import { canEditItemNote, cleanItemNote, isIcbDo } from "@/lib/item-note";
-import { OUTSOURCE_TRAILER } from "@/lib/trailer";
+import { OUTSOURCE_TRAILER, isOutsourceCompany } from "@/lib/trailer";
 import { driverLabel, fmtDate, todayMY } from "@/lib/format";
 import { mapsEnabled, updateDistances } from "@/lib/geo";
 import { BRANCHES, branchFromDoNo, branchName, branchToSave, canPlan } from "@/lib/branches";
@@ -638,31 +638,32 @@ function revalidateBoards() {
 /**
  * "Assign other branch" → Trailer: the DO is delivered by a trailer (shared by every branch, no
  * driver), so it is delivered right away, with no driver and so no points or commission.
- * OUTSOURCE_TRAILER instead of a trailer id = an outside company's trailer (no lorry in the app).
+ * OUTSOURCE_TRAILER instead of a trailer id = an outside company's trailer (no lorry in the app);
+ * `company` is which one (lib/trailer.ts OUTSOURCE_COMPANIES).
  * null = Take back: the DO goes back to Unassigned. The DO's own branch only, like a hand-over.
  */
-export async function setTrailer(doId: string, trailerId: string | null) {
+export async function setTrailer(doId: string, trailerId: string | null, company?: string) {
   const { supabase, profile } = await requireStaff();
   const { data: d } = await supabase
     .from("delivery_orders")
-    .select("so_id, status, branch, driver_id, is_oc, cancelled, voided_at, trailer_id, outsource_trailer")
+    .select("so_id, status, branch, driver_id, is_oc, cancelled, voided_at, trailer_id, outsource_trailer, outsource_name")
     .eq("id", doId)
     .single();
   if (!d) throw new Error("DO not found.");
   if (!canPlan(profile.branch, d.branch)) throw new Error(`Only ${branchName(d.branch)} can put this DO on a trailer.`);
   if (d.cancelled || d.voided_at) throw new Error("This DO is cancelled.");
   const current: string | null = d.outsource_trailer ? OUTSOURCE_TRAILER : d.trailer_id;
-  if (trailerId === current) return;
+  if (trailerId === current && (trailerId !== OUTSOURCE_TRAILER || company === d.outsource_name)) return;
 
   if (trailerId === null) {
     // Undo: back to Unassigned, not delivered.
     const { data: t } = d.trailer_id ? await supabase.from("lorries").select("lorry_no").eq("id", d.trailer_id).maybeSingle() : { data: null };
     const { error } = await supabase
       .from("delivery_orders")
-      .update({ trailer_id: null, outsource_trailer: false, lorry_id: null, status: "pending", delivered_at: null })
+      .update({ trailer_id: null, outsource_trailer: false, outsource_name: null, lorry_id: null, status: "pending", delivered_at: null })
       .eq("id", doId);
     if (error) throw new Error(error.message);
-    const from = d.outsource_trailer ? "outsource trailer" : `trailer ${t?.lorry_no ?? ""}`.trim();
+    const from = d.outsource_trailer ? `outsource trailer ${d.outsource_name ?? ""}`.trim() : `trailer ${t?.lorry_no ?? ""}`.trim();
     await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: "pending", note: `Taken back from ${from}` });
   } else {
     if (d.is_oc) throw new Error("O/C DOs are collected at the store, so they can't go on a trailer.");
@@ -670,11 +671,13 @@ export async function setTrailer(doId: string, trailerId: string | null) {
     // Changing from one trailer to another keeps it delivered; otherwise it must still be waiting.
     if (!current && !["pending", "assigned", "failed"].includes(d.status)) throw new Error("This DO is already on the road or delivered.");
     if (trailerId === OUTSOURCE_TRAILER) {
+      if (!isOutsourceCompany(company)) throw new Error("Pick the outsource company.");
       const { error } = await supabase
         .from("delivery_orders")
         .update({
           trailer_id: null,
           outsource_trailer: true,
+          outsource_name: company,
           lorry_id: null,
           status: "delivered", // delivered now (delivered_at set by the database)
           helper_branch: null,
@@ -683,7 +686,7 @@ export async function setTrailer(doId: string, trailerId: string | null) {
         })
         .eq("id", doId);
       if (error) throw new Error(error.message);
-      await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: "delivered", note: "Delivered by outsource trailer" });
+      await supabase.from("status_events").insert({ so_id: d.so_id, do_id: doId, status: "delivered", note: `Delivered by outsource trailer ${company}` });
       revalidatePath("/deliveries");
       revalidatePath("/drivers");
       return;
@@ -695,6 +698,7 @@ export async function setTrailer(doId: string, trailerId: string | null) {
       .update({
         trailer_id: t.id,
         outsource_trailer: false,
+        outsource_name: null,
         lorry_id: t.id,
         status: "delivered", // delivered now (delivered_at set by the database)
         helper_branch: null,

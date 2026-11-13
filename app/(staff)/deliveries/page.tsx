@@ -152,9 +152,9 @@ export default async function DeliveriesPage({
     .sort((a, b) => a.lorry_no.localeCompare(b.lorry_no, undefined, { numeric: true }))
     .map((l) => ({ id: l.id, label: lorryLabel(l) }));
   // The trailer delivering a DO: one of ours, or an outsource trailer (no lorry in the app).
-  const trailerOf = (j: Pick<DeliveryOrder, "trailer_id" | "outsource_trailer">) =>
+  const trailerOf = (j: Pick<DeliveryOrder, "trailer_id" | "outsource_trailer" | "outsource_name">) =>
     j.outsource_trailer
-      ? { id: OUTSOURCE_TRAILER, label: "" }
+      ? { id: OUTSOURCE_TRAILER, label: j.outsource_name ?? "" }
       : j.trailer_id
         ? (trailers.find((x) => x.id === j.trailer_id) ?? { id: j.trailer_id, label: "?" })
         : null;
@@ -457,7 +457,7 @@ export default async function DeliveriesPage({
                           </div>
                         ) : (
                           <div className="space-y-0.5 text-xs text-slate-500">
-                            <p>{j.outsource_trailer ? `🚛 ${T.byOutsource}` : j.trailer_id ? `🚛 ${T.byTrailer(trailerOf(j)!.label)}` : <>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</>}</p>
+                            <p>{j.outsource_trailer ? `🚛 ${T.byOutsource(j.outsource_name ?? "")}` : j.trailer_id ? `🚛 ${T.byTrailer(trailerOf(j)!.label)}` : <>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</>}</p>
                             <p className={late ? "text-rose-600" : ""}>📅 {date(j.delivery_date)}{late && T.late}</p>
                             {j.time_slot && <p>🕒 {t.estimated(TIME_SLOTS[j.time_slot])}</p>}
                             {!mine && (

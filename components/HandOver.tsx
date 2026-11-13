@@ -4,10 +4,10 @@ import { useState, useTransition } from "react";
 import { setHelperBranch, setTrailer } from "@/app/actions";
 import { BRANCHES, branchName } from "@/lib/branches";
 import { useStaffT } from "@/components/StaffLang";
-import { OUTSOURCE_TRAILER } from "@/lib/trailer";
+import { OUTSOURCE_COMPANIES, OUTSOURCE_TRAILER } from "@/lib/trailer";
 
 /**
- * `trailer`: the trailer delivering the DO now (null = none; id OUTSOURCE_TRAILER = an outsource trailer).
+ * `trailer`: the trailer delivering the DO now (null = none; id OUTSOURCE_TRAILER = an outsource trailer, label = its company).
  * `trailers`: every trailer, for any branch to pick.
  */
 export type HandOverInfo = { branch: string; helper: string | null; hasDriver: boolean; trailer: { id: string; label: string } | null; trailers: { id: string; label: string }[] };
@@ -24,6 +24,7 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
   const outsourced = trailer?.id === OUTSOURCE_TRAILER;
   const [to, setTo] = useState(outsourced ? OUTSOURCE_TRAILER : trailer ? TRAILER : (helper ?? ""));
   const [trailerId, setTrailerId] = useState(outsourced ? "" : (trailer?.id ?? ""));
+  const [company, setCompany] = useState(outsourced ? trailer!.label : "");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const t = useStaffT();
@@ -45,7 +46,7 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
     return (
       <div className="min-w-0">
         <button type="button" onClick={() => setChoosing(true)} className="btn-secondary">
-          {outsourced ? H.onOutsource : trailer ? H.onTrailer(trailer.label) : helper ? H.delivering(branchName(helper)) : H.assignOther}
+          {outsourced ? H.onOutsource(trailer!.label) : trailer ? H.onTrailer(trailer.label) : helper ? H.delivering(branchName(helper)) : H.assignOther}
         </button>
         {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       </div>
@@ -53,7 +54,7 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
   }
 
   const unchanged =
-    to === TRAILER ? !trailerId || trailerId === trailer?.id : to === OUTSOURCE_TRAILER ? outsourced : !to || (to === helper && !trailer);
+    to === TRAILER ? !trailerId || trailerId === trailer?.id : to === OUTSOURCE_TRAILER ? !company || (outsourced && company === trailer!.label) : !to || (to === helper && !trailer);
   return (
     <div className="min-w-0 space-y-1.5">
       {hasDriver ? (
@@ -77,13 +78,21 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
                 ))}
               </select>
             )}
+            {to === OUTSOURCE_TRAILER && (
+              <select value={company} onChange={(e) => setCompany(e.target.value)} aria-label={H.companyAria} className="input w-auto py-1.5">
+                <option value="" disabled>{H.chooseCompany}</option>
+                {OUTSOURCE_COMPANIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               disabled={pending || unchanged || (to === TRAILER && !trailers.length)}
               onClick={() =>
                 run(async () => {
                   if (to === TRAILER) return setTrailer(doId, trailerId);
-                  if (to === OUTSOURCE_TRAILER) return setTrailer(doId, OUTSOURCE_TRAILER);
+                  if (to === OUTSOURCE_TRAILER) return setTrailer(doId, OUTSOURCE_TRAILER, company);
                   // From a trailer to a branch: take it off the trailer first (back to Unassigned), then hand over.
                   if (trailer) await setTrailer(doId, null);
                   await setHelperBranch(doId, to);
