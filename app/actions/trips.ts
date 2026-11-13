@@ -6,10 +6,10 @@ import { requireStaff } from "@/lib/auth";
 import { bestRoute } from "@/lib/geo";
 import { branchName, canPlan, lockedBranches, storeAddress } from "@/lib/branches";
 import { cleanNote, isNoteField } from "@/lib/trip-form";
-import type { DoStatus } from "@/lib/types";
+import type { DeliveryOrder, DoStatus } from "@/lib/types";
 import { parseTime, todayMY } from "@/lib/format";
 import { nextTrip, notYourBranch } from "./_shared";
-import { TRIP_FORM_TIME_IN } from "@/lib/delivery-times";
+import { TRIP_FORM_TIME_IN, withStartedAt } from "@/lib/delivery-times";
 
 // ---------- Trip planning (Driver status page) -----------------------
 
@@ -282,4 +282,31 @@ export async function saveTripNote(input: { driverId: string; date: string; fiel
     : await supabase.from("trip_form_notes").delete().match(key);
   if (error) throw new Error(error.message);
   return value;
+}
+
+// ---------- Driver status: search every date -----------------------
+
+/**
+ * Driver status search box: these drivers' DOs whose DO no., customer, address or map address
+ * contains `search`, on any date (the page's date filter is ignored). Newest dates first, up to 200.
+ * Dispatchers only get their own branches' drivers, as on the page.
+ */
+export async function searchDriverDos(driverIds: string[], search: string): Promise<DeliveryOrder[]> {
+  const { supabase, profile } = await requireStaff();
+  const term = search.replace(/[,()%*"\\:]/g, " ").replace(/\s+/g, " ").trim();
+  if (term.length < 2 || !driverIds.length) return [];
+  let q = supabase.from("profiles").select("id").eq("role", "driver").in("id", driverIds.slice(0, 500));
+  const locked = lockedBranches(profile);
+  if (locked) q = q.in("branch", locked);
+  const ids = ((await q).data ?? []).map((d) => d.id);
+  if (!ids.length) return [];
+  const { data } = await supabase
+    .from("delivery_orders")
+    .select("*, do_items(id), links:do_sales_orders(so_no, so_id)")
+    .in("driver_id", ids)
+    .eq("cancelled", false)
+    .or(["do_no", "customer_name", "address", "map_address"].map((c) => `${c}.ilike.%${term}%`).join(","))
+    .order("delivery_date", { ascending: false })
+    .limit(200);
+  return withStartedAt(supabase, (data ?? []) as DeliveryOrder[]);
 }

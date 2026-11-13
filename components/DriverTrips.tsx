@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { moveToTrip, optimiseTrip } from "@/app/actions";
+import { moveToTrip, optimiseTrip, searchDriverDos } from "@/app/actions";
 import { DoBadge } from "./StatusBadge";
 import { BranchTags } from "./DocLinks";
 import { DoOutstanding } from "./Outstanding";
@@ -57,9 +57,41 @@ export function DriverTrips({
   const [routes, setRoutes] = useState<Record<string, RouteResult>>({}); // best route per trip, until the trip changes
   const [routing, setRouting] = useState<string | null>(null);
   // Search box: only matching DOs (and the drivers / days that have them) show. Drag and drop still works.
+  // It looks through every date, not only the dates picked above: matching DOs on other days are fetched
+  // from the server (`hits`) and their days are shown too.
   const [search, setSearch] = useState("");
   const searching = search.trim() !== "";
   const matches = (j: DeliveryOrder) => doMatches(j, search);
+  const [hits, setHits] = useState<DeliveryOrder[]>([]);
+  const [looking, setLooking] = useState(false);
+  const driverIds = drivers.map((d) => d.id).join(",");
+  useEffect(() => {
+    const term = search.trim();
+    if (term.length < 2) {
+      setHits([]);
+      setLooking(false);
+      return;
+    }
+    let stale = false;
+    setLooking(true);
+    const timer = setTimeout(async () => {
+      try {
+        const rows = await searchDriverDos(driverIds.split(","), term);
+        if (!stale) setHits(rows);
+      } catch {
+        if (!stale) setHits([]);
+      } finally {
+        if (!stale) setLooking(false);
+      }
+    }, 300);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [search, driverIds]);
+  // What's on screen: the picked dates' DOs, plus (while searching) matches from any other date.
+  const all = searching ? jobs.concat(hits.filter((h) => !jobs.some((j) => j.id === h.id))) : jobs;
+  const shownDates = searching ? [...new Set([...dates, ...all.filter(matches).map((j) => j.delivery_date)])].sort() : dates;
 
   function planRoute(lane: Lane) {
     const key = laneKey(lane);
@@ -81,10 +113,12 @@ export function DriverTrips({
     const id = dragId;
     setDragId(null);
     setOver(null);
-    const moved = jobs.find((j) => j.id === id);
+    const moved = all.find((j) => j.id === id);
     if (!moved || beforeId === id) return;
+    // A search match from outside the picked dates joins the page's DOs once it's moved.
+    const base = jobs.some((j) => j.id === moved.id) ? jobs : [...jobs, moved];
 
-    const target = jobs.filter((j) => j.id !== moved.id && inLane(j, lane)).sort(bySeq);
+    const target = all.filter((j) => j.id !== moved.id && inLane(j, lane)).sort(bySeq);
     const at = beforeId ? target.findIndex((j) => j.id === beforeId) : -1;
     target.splice(at < 0 ? target.length : at, 0, {
       ...moved,
@@ -100,7 +134,7 @@ export function DriverTrips({
       delete next[laneKey({ driverId: moved.driver_id ?? "", date: moved.delivery_date, tripNo: moved.trip_no })];
       return next;
     });
-    setJobs(jobs.filter((j) => j.id !== moved.id && !inLane(j, lane)).concat(target.map((j, i) => ({ ...j, trip_seq: i }))));
+    setJobs(base.filter((j) => j.id !== moved.id && !inLane(j, lane)).concat(target.map((j, i) => ({ ...j, trip_seq: i }))));
     setError(null);
     start(async () => {
       try {
@@ -239,14 +273,14 @@ export function DriverTrips({
     );
   }
 
-  const found = searching ? jobs.filter(matches).length : 0;
+  const found = searching ? all.filter(matches).length : 0;
   return (
     <div className="space-y-4">
       {/* Search on the right; what it found (and Clear) just before it. */}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {searching && (
           <span className="text-sm text-slate-500">
-            {found ? T.found(found) : T.noMatch}
+            {found ? `${T.found(found)} · ${T.allDates}` : looking ? T.searching : T.noMatch}
             <button type="button" onClick={() => setSearch("")} className="ml-3 text-brand-700 hover:underline">{t.clear}</button>
           </span>
         )}
@@ -266,7 +300,7 @@ export function DriverTrips({
       {pending && <p className="text-xs text-slate-400">{t.saving}</p>}
 
       {drivers.map((d) => {
-        const mine = jobs.filter((j) => j.driver_id === d.id);
+        const mine = all.filter((j) => j.driver_id === d.id);
         if (searching && !mine.some(matches)) return null; // no match for this driver
         const done = mine.filter((j) => j.status === "delivered").length;
         return (
@@ -298,7 +332,7 @@ export function DriverTrips({
               </div>
             </header>
             <div className="divide-y divide-slate-100">
-              {dates.map((date) => {
+              {shownDates.map((date) => {
                 const day = mine.filter((j) => j.delivery_date === date);
                 if (searching && !day.some(matches)) return null; // no match on this day
                 // Only trips that have DOs, numbered 1, 2, 3… on screen: if Trips 1–2 were emptied, Trip 3 shows
