@@ -20,6 +20,7 @@ import { SPECIAL_REASONS, canEditSpecial, canPrintSpecial, isGoodsReason, isSpec
 import { NavForm, NavLink, NavSelect, PendingDim, PendingNav, PendingSpinner } from "@/components/PendingNav";
 import { ItemNote } from "@/components/ItemNote";
 import { ColumnTabs } from "@/components/ColumnTabs";
+import { OUTSOURCE_TRAILER } from "@/lib/trailer";
 import { canEditItemNote, isIcbDo } from "@/lib/item-note";
 
 const COLUMN_DOT: Record<DoStatus, string> = {
@@ -150,7 +151,13 @@ export default async function DeliveriesPage({
   const trailers = ((trailerRows ?? []) as Pick<Lorry, "id" | "lorry_no" | "plate_no">[])
     .sort((a, b) => a.lorry_no.localeCompare(b.lorry_no, undefined, { numeric: true }))
     .map((l) => ({ id: l.id, label: lorryLabel(l) }));
-  const trailerOf = (id: string | null | undefined) => (id ? (trailers.find((x) => x.id === id) ?? { id, label: "?" }) : null);
+  // The trailer delivering a DO: one of ours, or an outsource trailer (no lorry in the app).
+  const trailerOf = (j: Pick<DeliveryOrder, "trailer_id" | "outsource_trailer">) =>
+    j.outsource_trailer
+      ? { id: OUTSOURCE_TRAILER, label: "" }
+      : j.trailer_id
+        ? (trailers.find((x) => x.id === j.trailer_id) ?? { id: j.trailer_id, label: "?" })
+        : null;
   // Newest were fetched first; cards still read oldest → newest.
   const jobs = await withStartedAt(supabase, ((data ?? []) as DeliveryOrder[]).reverse());
   const total = count ?? jobs.length;
@@ -356,8 +363,8 @@ export default async function DeliveriesPage({
                               print={j.source === "special" && canPrintSpecial(j, who) ? { printed: j.print_count } : undefined}
                               // A DO delivered by a trailer can still be moved to another trailer or taken back here.
                               officeCancel={canOfficeCancel ? { reason: j.office_cancelled_at ? (j.office_cancel_reason ?? "") : null } : undefined}
-                              handOver={(plannable || (mine && j.trailer_id && !j.voided_at)) && !j.is_oc && j.branch && canPlan(profile.branch, j.branch)
-                                ? { branch: j.branch, helper: j.helper_branch, hasDriver: !!j.driver_id, trailer: trailerOf(j.trailer_id), trailers }
+                              handOver={(plannable || (mine && (j.trailer_id || j.outsource_trailer) && !j.voided_at)) && !j.is_oc && j.branch && canPlan(profile.branch, j.branch)
+                                ? { branch: j.branch, helper: j.helper_branch, hasDriver: !!j.driver_id, trailer: trailerOf(j), trailers }
                                 : undefined}
                             />
                           </span>
@@ -450,7 +457,7 @@ export default async function DeliveriesPage({
                           </div>
                         ) : (
                           <div className="space-y-0.5 text-xs text-slate-500">
-                            <p>{j.trailer_id ? `🚛 ${T.byTrailer(trailerOf(j.trailer_id)!.label)}` : <>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</>}</p>
+                            <p>{j.outsource_trailer ? `🚛 ${T.byOutsource}` : j.trailer_id ? `🚛 ${T.byTrailer(trailerOf(j)!.label)}` : <>🚚 {j.driver ? driverLabel(j.driver) : j.is_oc ? T.ocCollects : T.noDriver}</>}</p>
                             <p className={late ? "text-rose-600" : ""}>📅 {date(j.delivery_date)}{late && T.late}</p>
                             {j.time_slot && <p>🕒 {t.estimated(TIME_SLOTS[j.time_slot])}</p>}
                             {!mine && (

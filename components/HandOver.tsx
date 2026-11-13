@@ -4,8 +4,12 @@ import { useState, useTransition } from "react";
 import { setHelperBranch, setTrailer } from "@/app/actions";
 import { BRANCHES, branchName } from "@/lib/branches";
 import { useStaffT } from "@/components/StaffLang";
+import { OUTSOURCE_TRAILER } from "@/lib/trailer";
 
-/** `trailer`: the trailer delivering the DO now (null = none). `trailers`: every trailer, for any branch to pick. */
+/**
+ * `trailer`: the trailer delivering the DO now (null = none; id OUTSOURCE_TRAILER = an outsource trailer).
+ * `trailers`: every trailer, for any branch to pick.
+ */
 export type HandOverInfo = { branch: string; helper: string | null; hasDriver: boolean; trailer: { id: string; label: string } | null; trailers: { id: string; label: string }[] };
 
 const TRAILER = "trailer";
@@ -17,8 +21,9 @@ const TRAILER = "trailer";
  */
 export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }: { doId: string } & HandOverInfo) {
   const [choosing, setChoosing] = useState(false);
-  const [to, setTo] = useState(trailer ? TRAILER : (helper ?? ""));
-  const [trailerId, setTrailerId] = useState(trailer?.id ?? "");
+  const outsourced = trailer?.id === OUTSOURCE_TRAILER;
+  const [to, setTo] = useState(outsourced ? OUTSOURCE_TRAILER : trailer ? TRAILER : (helper ?? ""));
+  const [trailerId, setTrailerId] = useState(outsourced ? "" : (trailer?.id ?? ""));
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const t = useStaffT();
@@ -40,14 +45,15 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
     return (
       <div className="min-w-0">
         <button type="button" onClick={() => setChoosing(true)} className="btn-secondary">
-          {trailer ? H.onTrailer(trailer.label) : helper ? H.delivering(branchName(helper)) : H.assignOther}
+          {outsourced ? H.onOutsource : trailer ? H.onTrailer(trailer.label) : helper ? H.delivering(branchName(helper)) : H.assignOther}
         </button>
         {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       </div>
     );
   }
 
-  const unchanged = to === TRAILER ? !trailerId || trailerId === trailer?.id : !to || (to === helper && !trailer);
+  const unchanged =
+    to === TRAILER ? !trailerId || trailerId === trailer?.id : to === OUTSOURCE_TRAILER ? outsourced : !to || (to === helper && !trailer);
   return (
     <div className="min-w-0 space-y-1.5">
       {hasDriver ? (
@@ -61,6 +67,7 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
                 <option key={b.code} value={b.code}>{b.name}</option>
               ))}
               <option value={TRAILER}>{H.trailer}</option>
+              <option value={OUTSOURCE_TRAILER}>{H.outsource}</option>
             </select>
             {to === TRAILER && trailers.length > 0 && (
               <select value={trailerId} onChange={(e) => setTrailerId(e.target.value)} aria-label={H.trailerAria} className="input w-auto py-1.5">
@@ -76,6 +83,7 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
               onClick={() =>
                 run(async () => {
                   if (to === TRAILER) return setTrailer(doId, trailerId);
+                  if (to === OUTSOURCE_TRAILER) return setTrailer(doId, OUTSOURCE_TRAILER);
                   // From a trailer to a branch: take it off the trailer first (back to Unassigned), then hand over.
                   if (trailer) await setTrailer(doId, null);
                   await setHelperBranch(doId, to);
@@ -98,6 +106,7 @@ export function HandOver({ doId, branch, helper, hasDriver, trailer, trailers }:
             )}
           </div>
           {to === TRAILER && <p className="text-xs text-slate-500">{trailers.length ? H.trailerNote : H.noTrailers}</p>}
+          {to === OUTSOURCE_TRAILER && <p className="text-xs text-slate-500">{H.trailerNote}</p>}
         </>
       )}
       <button type="button" onClick={() => setChoosing(false)} className="text-xs text-slate-500 hover:text-slate-900">

@@ -86,6 +86,8 @@ alter table public.lorries drop constraint if exists lorries_trailer_check;
 alter table public.lorries add constraint lorries_trailer_check
   check (not is_trailer or (branch is null and driver_id is null and borrow_branch is null));
 alter table public.delivery_orders add column if not exists trailer_id uuid references public.lorries on delete set null;
+-- Outsource trailer: an outside company's trailer delivered it (no lorry in the app). Same as a trailer otherwise.
+alter table public.delivery_orders add column if not exists outsource_trailer boolean not null default false;
 
 -- 2026-11-13: "Mark cancelled" for AutoCount DOs the sync missed (cancelled or deleted in AutoCount, but
 -- the 5-minute sync only fetches documents whose Last Modified changed). The DO's own branch or an

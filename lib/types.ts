@@ -99,6 +99,7 @@ export type DeliveryOrder = {
   driver_id: string | null;
   lorry_id: string | null; // lorry it was delivered with (set when delivered)
   trailer_id?: string | null; // delivered by this trailer: no driver, delivered when picked (setTrailer)
+  outsource_trailer?: boolean; // delivered by an outside company's trailer (no lorry in the app), like trailer_id
   office_cancelled_at?: string | null; // "Mark cancelled": AutoCount cancelled it but the sync missed it (keeps cancelled = true)
   office_cancel_reason?: string | null;
   trip_no: number;

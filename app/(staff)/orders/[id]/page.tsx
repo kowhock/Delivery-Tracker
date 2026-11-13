@@ -149,7 +149,7 @@ export default async function OrderDetail({ params }: { params: Promise<{ id: st
                       )}
                     </div>
                     <span className="text-sm text-slate-500">
-                      {fmtDate(d.delivery_date)}{d.time_slot && ` · est. ${TIME_SLOTS[d.time_slot as TimeSlot]}`} · {d.driver ? driverLabel(d.driver) : d.trailer_id ? "Trailer (no driver)" : d.supplier_delivery ? "Supplier delivery" : "No driver"}
+                      {fmtDate(d.delivery_date)}{d.time_slot && ` · est. ${TIME_SLOTS[d.time_slot as TimeSlot]}`} · {d.driver ? driverLabel(d.driver) : d.outsource_trailer ? "Outsource trailer (no driver)" : d.trailer_id ? "Trailer (no driver)" : d.supplier_delivery ? "Supplier delivery" : "No driver"}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-slate-600">
