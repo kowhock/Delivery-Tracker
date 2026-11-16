@@ -7,7 +7,7 @@ export const ROLL_DAYS = 4;
 /**
  * Unassigned DOs left from an earlier day move to today, so they're still in today's Unassigned
  * column and nobody forgets to deliver them. Each day's leftovers roll on again the next day.
- * Only the delivery date moves: the AutoCount DO date (doc_date) stays as it is. O/C, supplier
+ * Only the delivery date moves: the AutoCount DO date (doc_date) stays as it is. Void SDOs, O/C, supplier
  * deliveries, cancelled DOs and DOs with a driver are left alone.
  * Runs when staff open Deliveries or Driver status; usually it finds nothing to move.
  */
@@ -19,6 +19,7 @@ export async function rollUnassigned(supabase: SupabaseClient): Promise<void> {
     .eq("status", "pending")
     .is("driver_id", null)
     .eq("cancelled", false)
+    .is("voided_at", null) // void SDOs stay on their own day (voiding also sets cancelled; this keeps it explicit)
     .eq("is_oc", false)
     .eq("supplier_delivery", false)
     .gte("delivery_date", addDays(today, -ROLL_DAYS))
