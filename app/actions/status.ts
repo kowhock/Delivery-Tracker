@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSession, requireStaff } from "@/lib/auth";
 import { sendDeliveredNotice, waApiEnabled } from "@/lib/whatsapp-api";
+import { whatsappPhotoUrl } from "@/lib/wa-collage";
 import type { DoStatus } from "@/lib/types";
 import { todayMY } from "@/lib/format";
 
@@ -60,8 +61,9 @@ async function notifyDelivered(supabase: SupabaseClient, doId: string) {
     .eq("id", doId)
     .single();
   if (!d) return;
-  // Meta downloads the photo when it sends; a day leaves room for its retries.
-  const photo = d.pod_photo_path ? (await supabase.storage.from("pod").createSignedUrl(d.pod_photo_path, 86400)).data?.signedUrl ?? null : null;
+  // One photo goes as it is; 2–6 go as one collage (WhatsApp templates carry a single picture).
+  // Meta downloads it when it sends; the link lasts a day to leave room for its retries.
+  const photo = d.pod_photo_path ? await whatsappPhotoUrl(supabase, doId, d.pod_photo_path) : null;
   const ref = d.so_no ? `${d.so_no} (${d.do_no})` : d.do_no;
   const r = await sendDeliveredNotice(d.contact_phone, { customer_name: d.customer_name, ref }, photo);
   await supabase
