@@ -40,6 +40,30 @@ const supabase = createClient(need("NEXT_PUBLIC_SUPABASE_URL"), need("NEXT_PUBLI
   auth: { persistSession: false, autoRefreshToken: true },
 });
 
+async function signIn() {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: need("SUPABASE_SYNC_EMAIL"),
+    password: need("SUPABASE_SYNC_PASSWORD"),
+  });
+  if (error) throw new Error(`Supabase sign-in: ${error.message}`);
+}
+
+/**
+ * Before every run: still signed in? The login can be ended from elsewhere (a password change, or
+ * "sign out everywhere" with this same account), and then every save is refused as row-level
+ * security. If it's gone, sign in again, so the sync mends itself instead of failing until restarted.
+ */
+async function ensureSignedIn() {
+  const { data, error } = await supabase.auth.getUser();
+  if (!error && data.user) return;
+  log(`Supabase login lost (${error?.message ?? "no user"}), signing in again…`);
+  await signIn();
+  log("Signed in again");
+}
+
+/** A save refused because of the login (not because of one bad row): the run must count as failed. */
+const LOGIN_PROBLEM = /row-level security|JWT|not authenticated|permission denied|refresh token/i;
+
 // Save → log → work out distances. Called once per document kind, so DOs are saved before the slow invoice read.
 async function save(what: string, rows: AcDeliveryOrder[]) {
   const d = await importAcDeliveryOrders(supabase, rows);
@@ -47,6 +71,9 @@ async function save(what: string, rows: AcDeliveryOrder[]) {
 
   for (const m of d.errors) log(`ERROR ${m}`);
   for (const m of d.warnings) log(`warning ${m}`);
+  // Nothing was saved: don't let this run count as done, or its DOs would be skipped by the next one.
+  const refused = d.errors.find((m) => LOGIN_PROBLEM.test(m));
+  if (refused) throw new Error(`the database refused the save (${refused})`);
 
   // New / changed delivery addresses → driving distance → driver points (same as the Import page).
   const doNos = [...d.created, ...d.updated];
@@ -74,11 +101,7 @@ async function syncOnce(filter: AcSelectFilter) {
 
 async function main() {
   log("Signing in to Supabase…");
-  const { error } = await supabase.auth.signInWithPassword({
-    email: need("SUPABASE_SYNC_EMAIL"),
-    password: need("SUPABASE_SYNC_PASSWORD"),
-  });
-  if (error) throw new Error(`Supabase sign-in: ${error.message}`);
+  await signIn();
 
   const i = process.argv.indexOf("--days");
   if (i > 0) {
@@ -91,6 +114,7 @@ async function main() {
       const day = dayMY(d * 864e5);
       log(`--- ${day} ---`);
       try {
+        await ensureSignedIn();
         await syncOnce({ DateFrom: day, DateTo: day });
       } catch (e) {
         failed.push(day);
@@ -118,6 +142,7 @@ async function main() {
 
     log(`Changes from ${filter.LastModifiedFrom} to ${filter.LastModifiedTo}`);
     try {
+      await ensureSignedIn();
       await syncOnce(filter);
       lastSuccess = startedAt; // only move forward when the whole run worked
       // Shown on the Deliveries page as "synced 2 min ago".
