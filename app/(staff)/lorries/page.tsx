@@ -1,6 +1,7 @@
 import { requireStaff } from "@/lib/auth";
 import { LORRY_BRANCHES, branchName, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { todayMY } from "@/lib/format";
+import { getStaffT } from "@/lib/staff-lang";
 import type { Lorry, Profile } from "@/lib/types";
 import { Lorries, type LorryJobs, type LorryEvent } from "@/components/Lorries";
 import { RealtimeRefresh } from "@/components/RealtimeRefresh";
@@ -8,6 +9,8 @@ import { RealtimeRefresh } from "@/components/RealtimeRefresh";
 export default async function LorriesPage({ searchParams }: { searchParams: Promise<{ branch?: string }> }) {
   const sp = await searchParams;
   const { supabase, profile } = await requireStaff();
+  const { t } = await getStaffT();
+  const L = t.lorries;
   const today = todayMY();
 
   const [{ data: lorryRows }, { data: driverRows }] = await Promise.all([
@@ -69,21 +72,22 @@ export default async function LorriesPage({ searchParams }: { searchParams: Prom
       <RealtimeRefresh table="delivery_orders" />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Lorries</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{L.title}</h1>
           <p className="text-sm text-slate-500">
-            {branch ? `${branchName(branch)} branch · ` : locked ? `${locked.map(branchName).join(" + ")} branches · ` : "All branches · "}
-            {lorries.length} {lorries.length === 1 ? "lorry" : "lorries"}
+            {branch ? t.branchOf(branchName(branch)) : locked ? t.branchesOf(locked.map(branchName).join(" + ")) : t.allBranches}
+            {" · "}
+            {L.count(lorries.length)}
           </p>
         </div>
         {branches.length > 1 && (!locked || locked.length > 1) && (
           <form className="flex items-center gap-2">
             <select name="branch" defaultValue={branch || "all"} className="input w-auto">
-              <option value="all">{locked ? "All my branches" : "All branches"}</option>
+              <option value="all">{locked ? L.allMine : t.allBranches}</option>
               {branches.map((b) => (
-                <option key={b} value={b}>{branchName(b)}{!locked && userBranches(profile.branch).includes(b) ? " (mine)" : ""}</option>
+                <option key={b} value={b}>{branchName(b)}{!locked && userBranches(profile.branch).includes(b) ? L.mine : ""}</option>
               ))}
             </select>
-            <button className="btn-secondary">Go</button>
+            <button className="btn-secondary">{t.go}</button>
           </form>
         )}
       </div>

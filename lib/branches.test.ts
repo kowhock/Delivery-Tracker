@@ -16,6 +16,25 @@ describe("branchFromDoNo", () => {
     expect(branchFromDoNo("M-SN-00000005")).toBe("SL");
     expect(branchFromDoNo("M-XX-1")).toBeNull();
   });
+
+  it("knows the branches with their own account book, old prefixes and K- invoices included", () => {
+    expect(branchFromDoNo("UTDO-0003057")).toBe("UT");
+    expect(branchFromDoNo("DOKKC-00000576")).toBe("UT");
+    expect(branchFromDoNo("TTDO-00013511")).toBe("TT");
+    expect(branchFromDoNo("NJDO-00000001")).toBe("TT");
+    expect(branchFromDoNo("SLDO-00021416")).toBe("KSL");
+    expect(branchFromDoNo("PRDO-00017094")).toBe("PR");
+    expect(branchFromDoNo("PRD-00000277")).toBe("PR");
+    expect(branchFromDoNo("CGDO-00003305")).toBe("CG");
+    expect(branchFromDoNo("K-UT-00000663")).toBe("UT");
+    expect(branchFromDoNo("K-TT-00001342")).toBe("TT");
+    expect(branchFromDoNo("K-PR-1")).toBe("PR");
+    expect(branchFromDoNo("K-CG-00000217")).toBe("CG");
+    // Seelong's SND- and Kempas's "KS" location are unchanged.
+    expect(branchFromDoNo("SND-1")).toBe("SL");
+    expect(branchFromLocation("KS")).toBe("KS");
+    expect(branchName("TT")).toBe("Jaya Mas (Taman Timor)");
+  });
 });
 
 describe("branchFromLocation", () => {

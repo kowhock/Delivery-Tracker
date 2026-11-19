@@ -132,8 +132,9 @@ export async function importAcDeliveryOrders(supabase: SupabaseClient, input: Ac
     so_no: splitDocNos(r.transfer_from).join(", "),
     customer_name: r.debtor_name!,
     address: r.delivery_address,
-    branch: branchFromDoNo(r.doc_no),
-    sales_branch: branchFromLocation(r.sales_location),
+    branch: r.book_branch ?? branchFromDoNo(r.doc_no),
+    // A branch's own book uses its own Sales Locations ("KS" there is Kuala Selangor, not Kempas).
+    sales_branch: r.book_branch ?? branchFromLocation(r.sales_location),
     doc_date: r.date,
     ref: r.ref,
     total: r.total,

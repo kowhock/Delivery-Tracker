@@ -128,9 +128,11 @@ export default async function DeliveriesPage({
     return query;
   };
 
-  // Long ranges ("All dates") load the newest PAGE DOs; "Load more" adds the next PAGE.
+  // Long ranges ("All dates") load the newest PAGE DOs of each status; "Load more" adds the next PAGE to each.
+  // Each status is loaded on its own, so a big pile of Unassigned DOs (All branches) can't push the
+  // Assigned / Out for delivery / Delivered ones off the page.
   const limit = Math.min(Math.max(Number(sp.n) || PAGE, PAGE), MAX_LOADED);
-  const [{ data, count }, { data: driverRows }, { data: sync }, { count: failedCount }, { data: trailerRows }] = await Promise.all([
+  const jobsOf = (s: DoStatus) =>
     filtered(
       supabase
         .from("delivery_orders")
@@ -138,13 +140,15 @@ export default async function DeliveriesPage({
           "*, driver:profiles!delivery_orders_driver_id_fkey(full_name, lorry_no), links:do_sales_orders(so_no, so_id), outstanding:do_outstanding(id, do_id, reason, todo, todo_other, description, created_at, cleared_at, creator:profiles!do_outstanding_created_by_fkey(full_name)), attempts:delivery_attempts(id, failed_at, failed_reason)",
           { count: "exact" }
         ),
-      statuses,
+      [s],
       true
     )
       .is("outstanding.cleared_at", null) // only what's still outstanding; doesn't filter the DOs
       .order("delivery_date", { ascending: false })
       .order("created_at", { ascending: false })
-      .range(0, limit - 1),
+      .range(0, limit - 1);
+  const [perStatus, { data: driverRows }, { data: sync }, { count: failedCount }, { data: trailerRows }] = await Promise.all([
+    Promise.all(statuses.map(jobsOf)),
     supabase.from("profiles").select("id, full_name, lorry_no, branch").eq("role", "driver").order("full_name"),
     supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle(),
     // Failed DOs are hidden from the other filters; their count goes on the Failed tab so none get missed.
@@ -162,9 +166,12 @@ export default async function DeliveriesPage({
       : j.trailer_id
         ? (trailers.find((x) => x.id === j.trailer_id) ?? { id: j.trailer_id, label: "?" })
         : null;
-  // Newest were fetched first; cards still read oldest → newest.
-  const jobs = await withStartedAt(supabase, ((data ?? []) as DeliveryOrder[]).reverse());
-  const total = count ?? jobs.length;
+  // Newest first across all statuses (as one query would give); cards still read oldest → newest.
+  const newestFirst = (perStatus.flatMap((r) => r.data ?? []) as DeliveryOrder[]).sort(
+    (a, b) => b.delivery_date.localeCompare(a.delivery_date) || b.created_at.localeCompare(a.created_at)
+  );
+  const jobs = await withStartedAt(supabase, newestFirst.reverse());
+  const total = perStatus.reduce((n, r) => n + (r.count ?? r.data?.length ?? 0), 0);
   const capped = total > jobs.length;
   // Delivered count across everything matching, not just the loaded DOs.
   const done = capped
@@ -296,7 +303,7 @@ export default async function DeliveriesPage({
           </nav>
           {/* Changing dates or branch starts a fresh look, so it drops any DO search. Both load as soon as they're picked. */}
           {(!locked || locked.length > 1) && (
-            // Short labels keep the dropdown narrow, so the DO search fits on the same row.
+            // Full branch names (not codes), so nobody has to know that PD is Pandan.
             <NavSelect
               aria-label={T.branch}
               title={T.branchTitle}
@@ -305,7 +312,7 @@ export default async function DeliveriesPage({
                 { value: "all", label: T.allShort, href: href({ ...keep, branch: "all", ...dateParams }) },
                 ...BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => ({
                   value: b.code,
-                  label: `${b.code}${!locked && userBranches(profile.branch).includes(b.code) ? " ★" : ""}`,
+                  label: `${"short" in b ? b.short : b.name}${!locked && userBranches(profile.branch).includes(b.code) ? " ★" : ""}`,
                   href: href({ ...keep, branch: b.code, ...dateParams }),
                 })),
               ]}

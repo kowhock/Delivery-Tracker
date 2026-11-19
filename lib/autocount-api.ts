@@ -1,6 +1,6 @@
 import "server-only";
 import type { AcDeliveryOrder } from "./autocount-rows";
-import { branchFromDoNo } from "./branches";
+import { BRANCHES, branchFromDoNo } from "./branches";
 
 /**
  * READ-ONLY client for the IPS AutoCount API (settings in .env.local).
@@ -55,30 +55,48 @@ async function post(path: string, body: unknown, token?: string) {
   return text ? JSON.parse(text) : null;
 }
 
-// Tokens expire daily: keep one, log in again when it's rejected. After the AutoCount API restarts, old
-// tokens get 403 "LicenseNotAllowed" instead of 401 — a fresh login fixes that too.
-let token: string | null = null;
+/**
+ * An AutoCount account book. The main "M" book (AUTOCOUNT_DB_NAME) holds several branches, told apart by
+ * DO prefix; the others each belong to one branch (accountBook in lib/branches.ts). Same API and login.
+ */
+export type AcBook = { db: string; branch: string | null; icbPrefixes: string[] };
 
-async function login() {
+export function acBooks(): AcBook[] {
+  return [
+    { db: env("AUTOCOUNT_DB_NAME"), branch: null, icbPrefixes: ["M-"] },
+    ...BRANCHES.filter((b) => b.accountBook).map((b) => ({
+      db: b.accountBook!,
+      branch: b.code as string,
+      icbPrefixes: b.icbPrefix ? [`${b.icbPrefix}-`] : [],
+    })),
+  ];
+}
+
+// Tokens expire daily: keep one per account book, log in again when it's rejected. After the AutoCount API
+// restarts, old tokens get 403 "LicenseNotAllowed" instead of 401 — a fresh login fixes that too.
+const tokens = new Map<string, string>();
+
+async function login(db: string) {
   const data = await post("/api/auth/login", {
-    DatabaseName: env("AUTOCOUNT_DB_NAME"),
+    DatabaseName: db,
     UserLogin: env("AUTOCOUNT_USER"),
     UserPassword: env("AUTOCOUNT_PASSWORD"),
   });
   const t = typeof data === "string" ? data : data?.token ?? data?.Token ?? data?.accessToken ?? data?.AccessToken ?? data?.data?.token ?? data?.Data?.Token;
-  if (!t) throw new Error(`AutoCount login: no token in reply ${JSON.stringify(data).slice(0, 300)}`);
-  return (token = String(t));
+  if (!t) throw new Error(`AutoCount login (${db}): no token in reply ${JSON.stringify(data).slice(0, 300)}`);
+  tokens.set(db, String(t));
+  return String(t);
 }
 
-/** e.g. acSelect("deliveryorder", { DateFrom: "2026/10/01", DateTo: "2026/10/22" }) */
-export async function acSelect(what: AcReadable, filter: AcSelectFilter = {}) {
+/** e.g. acSelect("deliveryorder", { DateFrom: "2026/10/01", DateTo: "2026/10/22" }). `db` defaults to the M book. */
+export async function acSelect(what: AcReadable, filter: AcSelectFilter = {}, db = env("AUTOCOUNT_DB_NAME")) {
   if (!READABLE.includes(what)) throw new Error(`AutoCount is read-only here: ${what} is not allowed.`);
   const body = { DocNo: [], RecordCount: 1, Limit: 500, ...filter };
   try {
-    return await post(`/api/${what}/select`, body, token ?? (await login()));
+    return await post(`/api/${what}/select`, body, tokens.get(db) ?? (await login(db)));
   } catch (e) {
     if (![401, 403].includes((e as { status?: number }).status ?? 0)) throw e;
-    return post(`/api/${what}/select`, body, await login());
+    return post(`/api/${what}/select`, body, await login(db));
   }
 }
 
@@ -90,18 +108,18 @@ const str = (v: unknown) => (v == null || String(v).trim() === "" ? null : Strin
 const joinAddr = (r: ApiDoc) => [r.DeliverAddr1, r.DeliverAddr2, r.DeliverAddr3, r.DeliverAddr4].map(str).filter(Boolean).join(", ") || null;
 
 /** Reads every page. Invoices come slower than DOs: 100 of them can take over 5 minutes, past the timeout. */
-async function selectAll(what: AcReadable, filter: AcSelectFilter, Limit = 100): Promise<ApiDoc[]> {
+async function selectAll(what: AcReadable, filter: AcSelectFilter, db: string, Limit = 100): Promise<ApiDoc[]> {
   const all = new Map<string, ApiDoc>();
   for (let page = 1; ; page++) {
     const t0 = Date.now();
-    const data = await acSelect(what, { ...filter, RecordCount: page, Limit });
-    if (!data?.Success) throw new Error(`AutoCount ${what}: ${JSON.stringify(data).slice(0, 300)}`);
+    const data = await acSelect(what, { ...filter, RecordCount: page, Limit }, db);
+    if (!data?.Success) throw new Error(`AutoCount ${what} (${db}): ${JSON.stringify(data).slice(0, 300)}`);
     const list = (Object.values(data.SdkResult ?? {}).find(Array.isArray) ?? []) as ApiDoc[];
     // Pages can overlap (AutoCount's order isn't fixed), so keep every DO not seen yet instead of
     // dropping a page whose first DO is a repeat. Stop on a short page, or one with nothing new.
     const fresh = list.filter((d) => !all.has(d.DocNo));
     for (const d of fresh) all.set(d.DocNo, d);
-    console.log(`[${what}] page ${page}: ${list.length} docs, ${fresh.length} new (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+    console.log(`[${db} ${what}] page ${page}: ${list.length} docs, ${fresh.length} new (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
     if (list.length < Limit || !fresh.length) break;
   }
   return [...all.values()];
@@ -129,17 +147,26 @@ const toDo = (r: ApiDoc): AcDeliveryOrder => ({
   })),
 });
 
-export async function fetchAcDeliveryOrders(filter: AcSelectFilter): Promise<AcDeliveryOrder[]> {
-  return (await selectAll("deliveryorder", filter)).map(toDo);
+const mainBook = (): AcBook => acBooks()[0];
+const tag = (book: AcBook) => (d: AcDeliveryOrder): AcDeliveryOrder => (book.branch ? { ...d, book_branch: book.branch } : d);
+
+export async function fetchAcDeliveryOrders(filter: AcSelectFilter, book: AcBook = mainBook()): Promise<AcDeliveryOrder[]> {
+  return (await selectAll("deliveryorder", filter, book.db)).map(toDo).map(tag(book));
 }
 
 /**
  * Inter-company deliveries: between the group's own companies the branches skip the DO and
- * deliver on an invoice numbered "M-<branch>-…" ("M-PT-00000483" = a PT delivery).
- * Every other invoice (GPI-, NBI-, …) is ignored.
+ * deliver on an invoice numbered "M-<branch>-…" in the M book ("M-PT-00000483" = a PT delivery),
+ * or "K-<branch>-…" in a branch's own book ("K-UT-00000663" = a Ulu Tiram delivery).
+ * Every other invoice (GPI-, CGI-, …) is ignored. A book with no such prefix isn't read at all.
  */
-export async function fetchAcIcbDeliveryOrders(filter: AcSelectFilter): Promise<AcDeliveryOrder[]> {
-  return (await selectAll("invoice", filter, 20))
-    .filter((r) => r.DocNo.trim().toUpperCase().startsWith("M-") && branchFromDoNo(r.DocNo))
-    .map(toDo);
+export async function fetchAcIcbDeliveryOrders(filter: AcSelectFilter, book: AcBook = mainBook()): Promise<AcDeliveryOrder[]> {
+  if (!book.icbPrefixes.length) return [];
+  return (await selectAll("invoice", filter, book.db, 20))
+    .filter((r) => {
+      const no = r.DocNo.trim().toUpperCase();
+      return book.icbPrefixes.some((p) => no.startsWith(p)) && (book.branch || branchFromDoNo(no));
+    })
+    .map(toDo)
+    .map(tag(book));
 }

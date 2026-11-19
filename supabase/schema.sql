@@ -301,8 +301,8 @@ create table public.trip_form_notes (
 -- The office computer's sync writes here after each run, so the Deliveries page
 -- can show "AutoCount synced 2 min ago".
 create table public.sync_status (
-  source     text primary key,                 -- 'autocount'
-  synced_at  timestamptz not null              -- last run that worked finished at
+  source     text primary key,                 -- 'autocount' (every account book synced), 'autocount:<database>' (one book)
+  synced_at  timestamptz not null              -- last run that worked: finished at ('autocount') / started at (one book)
 );
 
 -- ---------- How much of each SO line is already on a DO --------------
