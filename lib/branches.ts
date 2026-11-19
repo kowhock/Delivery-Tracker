@@ -46,8 +46,7 @@ export const BRANCHES = [
     store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
     pin: null,
   },
-  // NB2: a branch of its own, with no store set (so no delivery distance). Has lorries: see LORRY_ONLY_BRANCHES.
-  { code: "NB2", name: "NB2", accountBook: null, doPrefixes: ["NBD"], icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null, pin: null },
+  // NB2 (NBD- DOs) is no longer used: see RETIRED_DO_PREFIXES.
   // Branches with their own AutoCount account book (same API and login as the M book).
   // Older DO prefixes seen in the books (DOKKC-, NJDO-, PRD-) are listed too, so they can be linked to special DOs.
   {
@@ -80,15 +79,22 @@ export const BRANCHES = [
 ] as const;
 
 /**
- * Branches that run lorries: every branch with a store, plus these store-less ones (NB2 — lorries
- * only; with no store its delivery distance / points stay keyed in by hand).
+ * Branches that run lorries: every branch with a store, plus any store-less ones listed here (with no
+ * store, their delivery distance / points stay keyed in by hand). None at the moment.
  */
-const LORRY_ONLY_BRANCHES: readonly string[] = ["NB2"];
+const LORRY_ONLY_BRANCHES: readonly string[] = [];
 export const hasLorries = (code: string | null | undefined) =>
-  BRANCHES.some((b) => b.code === code && (!!b.store || LORRY_ONLY_BRANCHES.includes(b.code)));
+  (BRANCHES as readonly { code: string; store: string | null }[]).some((b) => b.code === code && (!!b.store || LORRY_ONLY_BRANCHES.includes(b.code)));
 export const LORRY_BRANCHES = BRANCHES.filter((b) => hasLorries(b.code));
 
 const prefixOf = (docNo: string) => docNo.trim().toUpperCase().split("-")[0];
+
+/**
+ * DO prefixes of branches no longer used (NB2's NBD-). The sync doesn't bring them in, and the ones
+ * already saved are left in the database but hidden from the Deliveries page and the Unassigned rollover.
+ */
+export const RETIRED_DO_PREFIXES: readonly string[] = ["NBD"];
+export const isRetiredDo = (doNo: string) => RETIRED_DO_PREFIXES.includes(prefixOf(doNo));
 
 /**
  * Branch that delivers a DO, from its number: "PDD-00045420" → "PD", "M-PT-00000483" (inter-company invoice) → "PT",

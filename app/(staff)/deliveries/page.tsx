@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/auth";
-import { driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
+import { addDays, driverLabel, fmtDate, fmtDateTime, fmtTime, mapAddress, todayMY, weekRange } from "@/lib/format";
 import { withStartedAt } from "@/lib/delivery-times";
-import { rollUnassigned } from "@/lib/roll-unassigned";
-import { BRANCHES, branchName, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
+import { BRANCHES, RETIRED_DO_PREFIXES, branchName, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, userBranches } from "@/lib/branches";
 import { DO_STATUSES, TIME_SLOTS, lorryLabel, type DeliveryOrder, type DoStatus, type Lorry, type Outstanding, type Profile } from "@/lib/types";
 import { getStaffT } from "@/lib/staff-lang";
 import { AssignDriver } from "@/components/AssignDriver";
@@ -50,6 +49,14 @@ const MAX_LOADED = 3000;
 
 const PLANNABLE: DoStatus[] = ["pending", "assigned", "failed"];
 
+// Unassigned → Overdue: DOs still not assigned from this many days before the dates on screen (older ones are left
+// for a clean-up; a search still finds them). They keep their own date: assigning a driver moves one to today.
+const OVERDUE_DAYS = 30;
+// For now Overdue starts here: older DOs (October) are hidden from it until they're cleaned up. Search and All dates still show them.
+const OVERDUE_SINCE = "2026-11-01";
+/** Whole days from `d` to `today` (both YYYY-MM-DD). */
+const daysBetween = (d: string, today: string) => Math.round((Date.parse(today) - Date.parse(d)) / 864e5);
+
 
 const GRID_COLS = ["", "lg:grid-cols-1", "lg:grid-cols-2", "lg:grid-cols-3", "lg:grid-cols-4", "lg:grid-cols-5", "lg:grid-cols-6", "lg:grid-cols-7"];
 
@@ -72,7 +79,7 @@ function href(params: Record<string, string | undefined>) {
 export default async function DeliveriesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; show?: string; q?: string; oc?: string; extra?: string; branch?: string; xb?: string; n?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; show?: string; q?: string; oc?: string; extra?: string; branch?: string; xb?: string; n?: string; ud?: string }>;
 }) {
   const sp = await searchParams;
   const today = todayMY();
@@ -95,8 +102,6 @@ export default async function DeliveriesPage({
   // Cross-branch: DOs this branch sold that another branch is delivering.
   const crossOnly = sp.xb === "1";
   const { supabase, user, profile } = await requireStaff();
-  // Yesterday's (and the last few days') Unassigned DOs move to today first, so they aren't forgotten.
-  await rollUnassigned(supabase);
   const { t } = await getStaffT();
   const T = t.deliveries;
   const date = (d: string) => fmtDate(d, t.locale);
@@ -111,7 +116,15 @@ export default async function DeliveriesPage({
   // A search (DO no., customer / debtor name or address) narrows the DOs these filters show.
   // The page's filters, used for the cards and for the delivered count.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "neq", any>>(query: Q, st: DoStatus[] = statuses, withVoid = false): Q => {
+  // `before`: Overdue — dated from `before.from` up to the day before `before.to`, instead of the picked dates.
+  const filtered = <Q extends Record<"eq" | "in" | "or" | "ilike" | "gte" | "lte" | "lt" | "neq" | "not", any>>(
+    query: Q,
+    st: DoStatus[] = statuses,
+    withVoid = false,
+    before?: { from: string; to: string }
+  ): Q => {
+    // DOs of a branch no longer used (NB2's NBD-) stay in the database but never show here.
+    for (const p of RETIRED_DO_PREFIXES) query = query.not("do_no", "ilike", `${p}-%`);
     // Voided special orders stay on the board (marked VOID) but out of the counts.
     // DOs marked cancelled in the app come back only in a search, so they can be found and undone.
     query = (withVoid ? query.or(`cancelled.eq.false,voided_at.not.is.null${term ? ",office_cancelled_at.not.is.null" : ""}`) : query.eq("cancelled", false)).in("status", st);
@@ -120,8 +133,11 @@ export default async function DeliveriesPage({
     if (locked) query = query.or(deliveredOrSoldBy(locked));
     if (term) query = query.or(["do_no", "customer_name", "address", "map_address"].map((c) => `${c}.ilike.%${term}%`).join(","));
     // A search ignores the picked dates, so a DO is found whatever day it's on.
-    if (from && !term) query = query.gte("delivery_date", from);
-    if (to && !term) query = query.lte("delivery_date", to);
+    if (before) query = query.gte("delivery_date", before.from).lt("delivery_date", before.to);
+    else {
+      if (from && !term) query = query.gte("delivery_date", from);
+      if (to && !term) query = query.lte("delivery_date", to);
+    }
     // A branch sees what it delivers (and DOs handed over to it); Cross-branch switches to what it sold that another branch delivers (view only).
     if (branch && crossOnly) query = query.eq("sales_branch", branch).neq("branch", branch);
     else if (branch) query = query.or(`branch.eq.${branch},helper_branch.eq.${branch}`);
@@ -132,8 +148,14 @@ export default async function DeliveriesPage({
   // Each status is loaded on its own, so a big pile of Unassigned DOs (All branches) can't push the
   // Assigned / Out for delivery / Delivered ones off the page.
   const limit = Math.min(Math.max(Number(sp.n) || PAGE, PAGE), MAX_LOADED);
-  const jobsOf = (s: DoStatus) =>
-    filtered(
+  // Unassigned has two tabs when the dates on screen include today: New (those dates) and Overdue (still not
+  // assigned from the OVERDUE_DAYS before them). Not in a search or "All dates", which already show every day.
+  const canOverdue = statuses.includes("pending") && !term && !!from && from <= today && (!to || to >= today);
+  const overdueRange = { from: [addDays(from, -OVERDUE_DAYS), OVERDUE_SINCE].sort()[1], to: from };
+  const overdueView = canOverdue && sp.ud === "overdue";
+  const jobsOf = (s: DoStatus) => {
+    const overdue = overdueView && s === "pending";
+    return filtered(
       supabase
         .from("delivery_orders")
         .select(
@@ -141,13 +163,22 @@ export default async function DeliveriesPage({
           { count: "exact" }
         ),
       [s],
-      true
+      // Void special DOs stay on their own day (marked VOID) and never show as Overdue.
+      !overdue,
+      overdue ? overdueRange : undefined
     )
       .is("outstanding.cleared_at", null) // only what's still outstanding; doesn't filter the DOs
-      .order("delivery_date", { ascending: false })
-      .order("created_at", { ascending: false })
+      // Overdue: the oldest first (they've waited longest); otherwise the newest.
+      .order("delivery_date", { ascending: overdue })
+      .order("created_at", { ascending: overdue })
       .range(0, limit - 1);
-  const [perStatus, { data: driverRows }, { data: sync }, { count: failedCount }, { data: trailerRows }] = await Promise.all([
+  };
+  // The Unassigned tab not on screen: only its count.
+  const otherUnassigned = () =>
+    canOverdue
+      ? filtered(supabase.from("delivery_orders").select("id", { count: "exact", head: true }), ["pending"], false, overdueView ? undefined : overdueRange)
+      : Promise.resolve({ count: 0 });
+  const [perStatus, { data: driverRows }, { data: sync }, { count: failedCount }, { data: trailerRows }, { count: otherCount }] = await Promise.all([
     Promise.all(statuses.map(jobsOf)),
     supabase.from("profiles").select("id, full_name, lorry_no, branch").eq("role", "driver").order("full_name"),
     supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle(),
@@ -155,6 +186,7 @@ export default async function DeliveriesPage({
     filtered(supabase.from("delivery_orders").select("id", { count: "exact", head: true }), ["failed"]),
     // Trailers: shared by every branch, offered under "Assign other branch" → Trailer.
     supabase.from("lorries").select("id, lorry_no, plate_no").eq("is_trailer", true),
+    otherUnassigned(),
   ]);
   const trailers = ((trailerRows ?? []) as Pick<Lorry, "id" | "lorry_no" | "plate_no">[])
     .sort((a, b) => a.lorry_no.localeCompare(b.lorry_no, undefined, { numeric: true }))
@@ -171,8 +203,16 @@ export default async function DeliveriesPage({
     (a, b) => b.delivery_date.localeCompare(a.delivery_date) || b.created_at.localeCompare(a.created_at)
   );
   const jobs = await withStartedAt(supabase, newestFirst.reverse());
-  const total = perStatus.reduce((n, r) => n + (r.count ?? r.data?.length ?? 0), 0);
-  const capped = total > jobs.length;
+  const countOf = (r: (typeof perStatus)[number]) => r.count ?? r.data?.length ?? 0;
+  // What this view can load (for "Load more"), and the Unassigned tabs' counts.
+  const available = perStatus.reduce((n, r) => n + countOf(r), 0);
+  const pendingAt = statuses.indexOf("pending");
+  const shownUnassigned = pendingAt < 0 ? 0 : countOf(perStatus[pendingAt]);
+  const newCount = overdueView ? (otherCount ?? 0) : shownUnassigned;
+  const overdueCount = overdueView ? shownUnassigned : (otherCount ?? 0);
+  // The heading's "x of N delivered" counts the dates on screen, so Overdue DOs aren't in it.
+  const total = available - shownUnassigned + newCount;
+  const capped = available > jobs.length;
   // Delivered count across everything matching, not just the loaded DOs.
   const done = capped
     ? ((await filtered(supabase.from("delivery_orders").select("id", { count: "exact", head: true })).eq("status", "delivered")).count ?? 0)
@@ -200,6 +240,7 @@ export default async function DeliveriesPage({
     extra: extra || undefined,
     xb: crossOnly ? "1" : undefined,
     branch: sp.branch,
+    ud: overdueView ? "overdue" : undefined,
   };
   const dateParams = isToday ? {} : { from, to };
   const hidden = (params: Record<string, string | undefined>) =>
@@ -354,6 +395,22 @@ export default async function DeliveriesPage({
                   {label}
                   <span className="ml-auto rounded-full bg-white px-2 text-xs font-medium text-slate-500">{col.length}</span>
                 </h2>
+                {/* Unassigned: New (the dates on screen) or Overdue (still not assigned from before them). */}
+                {key === "pending" && canOverdue && (
+                  <nav className={`${TAB_GROUP} mb-2 bg-slate-200/60`} aria-label={T.unassignedView}>
+                    <NavLink href={href({ ...keep, ...dateParams, ud: undefined })} scroll={false} className={`${TAB} ${TAB_FILL} ${!overdueView ? TAB_ON : TAB_OFF}`}>
+                      {T.newTab(newCount.toLocaleString())}
+                    </NavLink>
+                    <NavLink
+                      href={href({ ...keep, ...dateParams, ud: "overdue" })}
+                      scroll={false}
+                      title={T.overdueTitle(OVERDUE_DAYS)}
+                      className={`${TAB} ${TAB_FILL} ${overdueView ? TAB_ON : overdueCount ? "text-rose-600 hover:text-rose-700" : TAB_OFF}`}
+                    >
+                      {T.overdueTab(overdueCount.toLocaleString())}
+                    </NavLink>
+                  </nav>
+                )}
                 <div className="space-y-2">
                   {col.map((j) => {
                     // Only the delivering branch (or the branch it was handed over to) picks the driver and day; others just follow along.
@@ -461,6 +518,9 @@ export default async function DeliveriesPage({
                           </div>
                         ) : plannable ? (
                           <div className="space-y-1.5">
+                            {j.status === "pending" && late && (
+                              <p className="text-xs font-semibold text-rose-600">⚠ {T.daysLate(daysBetween(j.delivery_date, today))}</p>
+                            )}
                             {j.status === "failed" && <Redeliver doId={j.id} />}
                             <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
                             <DoDate doId={j.id} date={j.delivery_date} today={today} />

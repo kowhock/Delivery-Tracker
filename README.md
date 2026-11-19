@@ -117,7 +117,7 @@ when the code changes.
 ## How data gets in
 
 The AutoCount sync (`scripts/autocount-sync.ts`) reads every **account book** on the same API and login:
-the M book (`AUTOCOUNT_DB_NAME`: GP, PD, KS, MS, PT, SL, NB2) and the branches with a book of their own
+the M book (`AUTOCOUNT_DB_NAME`: GP, PD, KS, MS, PT, SL; NB2's NBD- DOs are no longer used — skipped by the sync and hidden on Deliveries, see `RETIRED_DO_PREFIXES`) and the branches with a book of their own
 (`accountBook` in `lib/branches.ts`: Ulu Tiram `AED_KHTIRAM`, Jaya Mas (Taman Timor) `AED_KHNJ`, Kuala Selangor
 `AED_KHKS`, Pengerang `AED_KHPGR`, CG `AED_KHCG`). A new book only needs a line there — no `.env.local` change.
 From each book it reads two kinds of documents and saves both as DOs through `importAcDeliveryOrders()` in `lib/autocount.ts`:

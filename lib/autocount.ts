@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { branchFromDoNo, branchFromLocation } from "./branches";
+import { branchFromDoNo, branchFromLocation, isRetiredDo } from "./branches";
 import { splitDocNos, type AcDeliveryOrder, type AcImportResult, type AcSalesOrder } from "./autocount-rows";
 import { todayMY } from "./format";
 
@@ -120,7 +120,8 @@ export async function importAcSalesOrders(supabase: SupabaseClient, input: AcSal
 
 export async function importAcDeliveryOrders(supabase: SupabaseClient, input: AcDeliveryOrder[]): Promise<AcImportResult> {
   const result: AcImportResult = { created: [], updated: [], warnings: [], errors: [] };
-  const rows = dedupe(input, result);
+  // DOs of a branch no longer used (NBD-) are skipped: not added, and ones already saved aren't updated.
+  const rows = dedupe(input, result).filter((r) => !isRetiredDo(r.doc_no));
   if (!rows.length) return result;
 
   const before = await existingIds(supabase, "delivery_orders", "do_no", rows.map((r) => r.doc_no));

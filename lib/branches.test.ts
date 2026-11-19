@@ -147,13 +147,25 @@ describe("driversForBranch", () => {
   });
 });
 
-import { LORRY_BRANCHES, hasLorries } from "./branches";
+import { LORRY_BRANCHES, hasLorries, isRetiredDo } from "./branches";
 describe("hasLorries", () => {
-  it("store branches plus NB2", () => {
-    expect(hasLorries("NB2")).toBe(true);
+  it("store branches only (NB2 is no longer used)", () => {
     expect(hasLorries("GP")).toBe(true);
+    expect(hasLorries("NB2")).toBe(false);
     expect(hasLorries("XX")).toBe(false);
     expect(hasLorries(null)).toBe(false);
-    expect(LORRY_BRANCHES.map((b) => b.code)).toContain("NB2");
+    expect(LORRY_BRANCHES.map((b) => b.code)).not.toContain("NB2");
+  });
+});
+
+describe("NB2 retired", () => {
+  it("NBD- DOs are retired and belong to no branch", () => {
+    expect(isRetiredDo("NBD-00001234")).toBe(true);
+    expect(isRetiredDo(" nbd-00001234 ")).toBe(true);
+    expect(branchFromDoNo("NBD-00001234")).toBeNull();
+    expect(branchName("NB2")).toBe("NB2"); // old rows still show their code
+  });
+  it("other DOs aren't", () => {
+    for (const no of ["GPD-00044524", "TTDO-00013511", "K-TT-00001355", "M-PT-00000483"]) expect(isRetiredDo(no)).toBe(false);
   });
 });
