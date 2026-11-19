@@ -4,6 +4,9 @@ import { addDays, fmtDate, todayMY } from "./format";
 /** How far back the carry-over looks: Unassigned DOs older than this stay on their own day (search still finds them). */
 export const ROLL_DAYS = 4;
 
+/** The history notes for these moves are signed by the sync account, not whoever opened the page. */
+const ROLL_ACTOR_NAME = "admin-sync";
+
 /**
  * Unassigned DOs left from an earlier day move to today, so they're still in today's Unassigned
  * column and nobody forgets to deliver them. Each day's leftovers roll on again the next day.
@@ -39,11 +42,14 @@ export async function rollUnassigned(supabase: SupabaseClient): Promise<void> {
   if (!moved?.length) return;
 
   const was = new Map(old.map((d) => [d.id, d]));
+  // No such account (renamed?) → the note falls back to the person who opened the page, as before.
+  const { data: bot } = await supabase.from("profiles").select("id").eq("full_name", ROLL_ACTOR_NAME).limit(1).maybeSingle();
   await supabase.from("status_events").insert(
     moved.map(({ id }) => ({
       so_id: was.get(id)?.so_id ?? null,
       do_id: id,
       status: "pending",
+      ...(bot ? { actor_id: bot.id } : {}),
       note: `Moved from ${fmtDate(was.get(id)!.delivery_date)} to ${fmtDate(today)} (not assigned yet)`,
     }))
   );
