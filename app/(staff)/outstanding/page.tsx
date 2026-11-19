@@ -81,7 +81,7 @@ export default async function OutstandingPage({
               <option value="all">{locked ? "All my branches" : "All branches"}</option>
               {BRANCHES.filter((b) => !locked || locked.includes(b.code)).map((b) => (
                 <option key={b.code} value={b.code}>
-                  {b.code}{!locked && userBranches(profile.branch).includes(b.code) ? " (mine)" : ""}
+                  {b.name}{!locked && userBranches(profile.branch).includes(b.code) ? " (mine)" : ""}
                 </option>
               ))}
             </select>

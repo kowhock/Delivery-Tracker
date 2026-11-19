@@ -4,12 +4,18 @@
  * Runs on a computer in the office network (the AutoCount API is at a 192.168.x.x address).
  *
  *   npm run autocount:sync -- --days 14   one time: DOs dated in the last 14 days, day by day (backfill)
+ *   npm run autocount:sync -- --days 14 --book UT,CG   the same, only those branches' account books
+ *                                         (branch code or database name; "M" = the main book)
  *   npm run autocount:sync                keeps running: every 5 minutes, DOs changed since the last run
+ *
+ * Reads every account book in turn (acBooks(): the M book, then each branch with its own book). A book that
+ * fails doesn't stop the others; it keeps its own "last synced" time and catches up on the next run.
  *
  * Signs in to Supabase as the staff user in SUPABASE_SYNC_EMAIL / SUPABASE_SYNC_PASSWORD.
  */
 import { createClient } from "@supabase/supabase-js";
-import { fetchAcDeliveryOrders, fetchAcIcbDeliveryOrders, type AcSelectFilter } from "../lib/autocount-api";
+import { acBooks, fetchAcDeliveryOrders, fetchAcIcbDeliveryOrders, type AcBook, type AcSelectFilter } from "../lib/autocount-api";
+import { branchName } from "../lib/branches";
 import { importAcDeliveryOrders } from "../lib/autocount";
 import type { AcDeliveryOrder } from "../lib/autocount-rows";
 import { mapsEnabled, updateDistances } from "../lib/geo";
@@ -88,20 +94,41 @@ async function save(what: string, rows: AcDeliveryOrder[]) {
   }
 }
 
-async function syncOnce(filter: AcSelectFilter) {
+const bookName = (b: AcBook) => (b.branch ? `${branchName(b.branch)} (${b.db})` : `M book (${b.db})`);
+
+// sync_status rows: one per book ("autocount:AED_KHCG"), plus "autocount" = every book synced (the Deliveries page shows it).
+const statusKey = (b: AcBook) => `autocount:${b.db}`;
+
+async function syncOnce(filter: AcSelectFilter, book: AcBook) {
   const t0 = Date.now();
+  const name = bookName(book);
 
-  log("Reading DOs from AutoCount…");
-  await save("DO", await fetchAcDeliveryOrders(filter));
-  log("Reading inter-company invoices (M-…) from AutoCount…");
-  await save("Inter-company invoice", await fetchAcIcbDeliveryOrders(filter));
+  log(`${name}: reading DOs…`);
+  await save(`${name} DO`, await fetchAcDeliveryOrders(filter, book));
+  if (book.icbPrefixes.length) {
+    log(`${name}: reading inter-company invoices (${book.icbPrefixes.map((p) => `${p}…`).join(", ")})…`);
+    await save(`${name} inter-company invoice`, await fetchAcIcbDeliveryOrders(filter, book));
+  }
 
-  log(`Done in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  log(`${name}: done in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+}
+
+/** --book UT,CG / --book AED_KHCG / --book M → only those books. */
+function pickBooks(): AcBook[] {
+  const all = acBooks();
+  const i = process.argv.indexOf("--book");
+  if (i < 0) return all;
+  const wanted = (process.argv[i + 1] ?? "").split(",").map((w) => w.trim().toUpperCase()).filter(Boolean);
+  const picked = all.filter((b) => wanted.some((w) => w === b.db.toUpperCase() || w === (b.branch ?? "M")));
+  if (!picked.length) throw new Error(`--book: none of "${wanted.join(",")}" is an account book. Books: ${all.map((b) => `${b.branch ?? "M"} (${b.db})`).join(", ")}`);
+  return picked;
 }
 
 async function main() {
   log("Signing in to Supabase…");
   await signIn();
+  const books = pickBooks();
+  log(`Account books: ${books.map(bookName).join(", ")}`);
 
   const i = process.argv.indexOf("--days");
   if (i > 0) {
@@ -113,43 +140,59 @@ async function main() {
     for (let d = days; d >= 0; d--) {
       const day = dayMY(d * 864e5);
       log(`--- ${day} ---`);
-      try {
-        await ensureSignedIn();
-        await syncOnce({ DateFrom: day, DateTo: day });
-      } catch (e) {
-        failed.push(day);
-        log(`ERROR ${day}: ${e instanceof Error ? e.message : e}`);
+      for (const book of books) {
+        try {
+          await ensureSignedIn();
+          await syncOnce({ DateFrom: day, DateTo: day }, book);
+        } catch (e) {
+          failed.push(`${day} ${book.branch ?? "M"}`);
+          log(`ERROR ${day} ${bookName(book)}: ${e instanceof Error ? e.message : e}`);
+        }
       }
     }
-    if (failed.length) throw new Error(`These days failed, run them again: ${failed.join(", ")}`);
+    if (failed.length) throw new Error(`These days failed, run them again (with --book): ${failed.join(", ")}`);
     return;
   }
 
   log(`Syncing every ${EVERY_MIN} minutes. Ctrl+C stops it.`);
-  // Carry on from the last good sync, so changes made while this PC was off or asleep aren't missed.
-  const { data: last } = await supabase.from("sync_status").select("synced_at").eq("source", "autocount").maybeSingle();
-  let lastSuccess: Date | null = last?.synced_at
-    ? new Date(Math.max(new Date(last.synced_at).getTime(), Date.now() - MAX_CATCH_UP_DAYS * 864e5))
-    : null;
-  if (lastSuccess) log(`Catching up from the last sync at ${timeMY(lastSuccess)}`);
+  // Carry on from each book's last good sync, so changes made while this PC was off or asleep aren't missed.
+  // The M book synced before account books were split keeps going from the old "autocount" time.
+  const { data: rows } = await supabase.from("sync_status").select("source, synced_at").like("source", "autocount%");
+  const lastAt = new Map((rows ?? []).map((r) => [r.source as string, new Date(r.synced_at as string)]));
+  const lastSuccess = new Map<string, Date | null>();
+  for (const book of books) {
+    const last = lastAt.get(statusKey(book)) ?? (book.branch ? undefined : lastAt.get("autocount"));
+    lastSuccess.set(book.db, last ? new Date(Math.max(last.getTime(), Date.now() - MAX_CATCH_UP_DAYS * 864e5)) : null);
+    log(last ? `${bookName(book)}: catching up from ${timeMY(last)}` : `${bookName(book)}: first run, reading the last ${FIRST_RUN_HOURS} hours`);
+  }
 
   for (;;) {
     const startedAt = new Date();
-    const from = lastSuccess
-      ? new Date(lastSuccess.getTime() - OVERLAP_MIN * 60e3)
-      : new Date(startedAt.getTime() - FIRST_RUN_HOURS * 3600e3);
-    const filter = { LastModifiedFrom: timeMY(from), LastModifiedTo: timeMY(startedAt) };
+    const done: string[] = [];
+    for (const book of books) {
+      const last = lastSuccess.get(book.db);
+      const from = last ? new Date(last.getTime() - OVERLAP_MIN * 60e3) : new Date(startedAt.getTime() - FIRST_RUN_HOURS * 3600e3);
+      const filter = { LastModifiedFrom: timeMY(from), LastModifiedTo: timeMY(startedAt) };
+      log(`${bookName(book)}: changes from ${filter.LastModifiedFrom} to ${filter.LastModifiedTo}`);
+      try {
+        await ensureSignedIn();
+        await syncOnce(filter, book);
+        lastSuccess.set(book.db, startedAt); // only move forward when the whole run for this book worked
+        done.push(book.db);
+      } catch (e) {
+        log(`ERROR ${bookName(book)}: ${e instanceof Error ? e.message : e} — next run will cover this gap`);
+      }
+    }
 
-    log(`Changes from ${filter.LastModifiedFrom} to ${filter.LastModifiedTo}`);
-    try {
-      await ensureSignedIn();
-      await syncOnce(filter);
-      lastSuccess = startedAt; // only move forward when the whole run worked
-      // Shown on the Deliveries page as "synced 2 min ago".
-      const { error } = await supabase.from("sync_status").upsert({ source: "autocount", synced_at: new Date().toISOString() });
+    // One write for the whole run, so open Deliveries pages refresh once. "autocount" ("synced 2 min ago" on
+    // the Deliveries page) only moves when every book worked — so a failing book shows up as an old sync time.
+    const now = new Date().toISOString();
+    // A book's own row keeps when its run started (what the next run carries on from, as lastSuccess does).
+    const status = books.filter((b) => done.includes(b.db)).map((b) => ({ source: statusKey(b), synced_at: startedAt.toISOString() }));
+    if (done.length === books.length && books.length === acBooks().length) status.push({ source: "autocount", synced_at: now });
+    if (status.length) {
+      const { error } = await supabase.from("sync_status").upsert(status);
       if (error) log(`warning could not save sync time: ${error.message}`);
-    } catch (e) {
-      log(`ERROR ${e instanceof Error ? e.message : e} — next run will cover this gap`);
     }
 
     // wait until 5 minutes after this run started (not 5 minutes after it finished)

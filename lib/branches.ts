@@ -2,8 +2,11 @@
  * The company's branches and how AutoCount names them. Users' profiles.branch
  * and the branch columns on SOs/DOs store the `code`.
  *
- * - doPrefix:  DO numbers start with it (GPD-00044524 → GP delivers it)
- * - icbPrefix: inter-company invoices that serve as this branch's DO start with it (M-PT-00000483)
+ * - accountBook: the AutoCount account book (database) holding this branch's DOs. null = the main "M" book
+ *              (AUTOCOUNT_DB_NAME in .env.local), which holds several branches told apart by DO prefix.
+ *              A branch with its own book owns every DO and K- invoice read from that book, whatever the number.
+ * - doPrefixes: DO numbers start with one of these (GPD-00044524 → GP delivers it)
+ * - icbPrefix: inter-company invoices that serve as this branch's DO start with it (M-PT-00000483, K-UT-00000663)
  * - soPrefix:  SO numbers start with it
  * - locations: AutoCount "Sales Location" / "Agent" values that mean this branch
  * - store:     the store's address; delivery distance (and driver points) is measured from here
@@ -12,57 +15,95 @@
  */
 export const BRANCHES = [
   {
-    code: "GP", name: "Gelang Patah", doPrefix: "GPD", icbPrefix: "M-GP", soPrefix: "GPS", locations: ["GPS", "GP"],
+    code: "GP", name: "Gelang Patah", accountBook: null, doPrefixes: ["GPD"], icbPrefix: "M-GP", soPrefix: "GPS", locations: ["GPS", "GP"],
     store: "Lot 261 Mukim Jelutong, Jalan Ulu Choh, 81550 Gelang Patah, Johor",
     pin: null,
   },
   {
     // TODO: Pandan store address — until it's set, PD deliveries need points keyed in on Driver status.
-    code: "PD", name: "Pandan", doPrefix: "PDD", icbPrefix: "M-PD", soPrefix: "PDS", locations: ["PD", "PDS"],
+    code: "PD", name: "Pandan", accountBook: null, doPrefixes: ["PDD"], icbPrefix: "M-PD", soPrefix: "PDS", locations: ["PD", "PDS"],
     store: "Jalan Kangkar Tebrau, Kangkar Tebrau Baru, 81100 Johor Bahru, Johor Darul Ta'zim",
     pin: null,
   },
   {
-    code: "KS", name: "Kempas", doPrefix: "KSD", icbPrefix: "M-KS", soPrefix: "KSS", locations: ["KP", "KS", "KSS"],
+    code: "KS", name: "Kempas", accountBook: null, doPrefixes: ["KSD"], icbPrefix: "M-KS", soPrefix: "KSS", locations: ["KP", "KS", "KSS"],
     store: "Lot 44565, Jalan Kempas Baru, Kempas Baru, 81300 Johor Bahru, Johor",
     pin: null,
   },
   {
-    code: "MS", name: "Masai", doPrefix: "MSD", icbPrefix: "M-MS", soPrefix: "MSS", locations: ["MS", "MSS"],
+    code: "MS", name: "Masai", accountBook: null, doPrefixes: ["MSD"], icbPrefix: "M-MS", soPrefix: "MSS", locations: ["MS", "MSS"],
     store: "Jalan Besar, Kampung Pertanian, 81750 Pasir Gudang, Johor",
     pin: null,
   },
   {
-    code: "PT", name: "Pontian", doPrefix: "PTD", icbPrefix: "M-PT", soPrefix: "PTS", locations: ["PT", "PTS"],
+    code: "PT", name: "Pontian", accountBook: null, doPrefixes: ["PTD"], icbPrefix: "M-PT", soPrefix: "PTS", locations: ["PT", "PTS"],
     store: "Lot 3863, Batu 32, Jalan Johor, 82000 Pontian, Johor, Malaysia",
     pin: { lat: 1.515167, lng: 103.448833 }, // Google Maps pin at the store (1°30'54.6"N 103°26'55.8"E)
   },
   {
     // TODO: soPrefix / locations guessed from the DO prefix (SND) — check against AutoCount.
-    code: "SL", name: "Seelong", doPrefix: "SND", icbPrefix: "M-SN", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
+    code: "SL", name: "Seelong", accountBook: null, doPrefixes: ["SND"], icbPrefix: "M-SN", soPrefix: "SNS", locations: ["SL", "SN", "SNS"],
     store: "Lot 147723, Kg Seelong Jaya, 81400 Senai, Johor Darul Ta'zim",
     pin: null,
   },
-  // NB2: a branch of its own, with no store set (so no delivery distance). Has lorries: see LORRY_ONLY_BRANCHES.
-  { code: "NB2", name: "NB2", doPrefix: "NBD", icbPrefix: null, soPrefix: "NBS", locations: ["NB2", "NB"], store: null, pin: null },
+  // NB2 (NBD- DOs) is no longer used: see RETIRED_DO_PREFIXES.
+  // Branches with their own AutoCount account book (same API and login as the M book).
+  // Older DO prefixes seen in the books (DOKKC-, NJDO-, PRD-) are listed too, so they can be linked to special DOs.
+  {
+    code: "UT", name: "Ulu Tiram", accountBook: "AED_KHTIRAM", doPrefixes: ["UTDO", "DOKKC"], icbPrefix: "K-UT", soPrefix: null, locations: [],
+    store: "Lot 413, Batu 13 1/2, JST, 54, Sungai Tiram, 81800 Ulu Tiram, Johor",
+    pin: null,
+  },
+  {
+    // short: the label in the Deliveries page's branch filter (the full name is used everywhere else).
+    code: "TT", name: "Jaya Mas (Taman Timor)", short: "Jaya Mas (TT)", accountBook: "AED_KHNJ", doPrefixes: ["TTDO", "NJDO"], icbPrefix: "K-TT", soPrefix: null, locations: [],
+    store: "PTD 57952, Jalan Timor, Taman Timor, 81300 Johor Bahru, Johor",
+    pin: null,
+  },
+  {
+    // Its book's Sales Location is "KS", which in the M book means Kempas — so the code is KSL.
+    code: "KSL", name: "Kuala Selangor", accountBook: "AED_KHKS", doPrefixes: ["SLDO"], icbPrefix: null, soPrefix: null, locations: [],
+    store: "96RC+P2 Tanjung Karang, Selangor",
+    pin: { lat: 3.390087, lng: 101.220078 }, // the plus code 96RC+P2 (near Tanjung Karang)
+  },
+  {
+    code: "PR", name: "Pengerang", accountBook: "AED_KHPGR", doPrefixes: ["PRDO", "PRD"], icbPrefix: "K-PR", soPrefix: null, locations: [],
+    store: "PTD 8431, Jalan Teluk Ramunia, Kampung Simon, Teluk Ramunia, 86120 Pengerang, Johor",
+    pin: null,
+  },
+  {
+    code: "CG", name: "CG", accountBook: "AED_KHCG", doPrefixes: ["CGDO"], icbPrefix: "K-CG", soPrefix: null, locations: [],
+    store: "110, Jalan Dato Sulaiman, Taman Abad, 80250 Johor Bahru, Johor Darul Ta'zim",
+    pin: null,
+  },
 ] as const;
 
 /**
- * Branches that run lorries: every branch with a store, plus these store-less ones (NB2 — lorries
- * only; with no store its delivery distance / points stay keyed in by hand).
+ * Branches that run lorries: every branch with a store, plus any store-less ones listed here (with no
+ * store, their delivery distance / points stay keyed in by hand). None at the moment.
  */
-const LORRY_ONLY_BRANCHES: readonly string[] = ["NB2"];
+const LORRY_ONLY_BRANCHES: readonly string[] = [];
 export const hasLorries = (code: string | null | undefined) =>
-  BRANCHES.some((b) => b.code === code && (!!b.store || LORRY_ONLY_BRANCHES.includes(b.code)));
+  (BRANCHES as readonly { code: string; store: string | null }[]).some((b) => b.code === code && (!!b.store || LORRY_ONLY_BRANCHES.includes(b.code)));
 export const LORRY_BRANCHES = BRANCHES.filter((b) => hasLorries(b.code));
 
 const prefixOf = (docNo: string) => docNo.trim().toUpperCase().split("-")[0];
 
-/** Branch that delivers a DO, from its number: "PDD-00045420" → "PD", "M-PT-00000483" (inter-company invoice) → "PT". */
+/**
+ * DO prefixes of branches no longer used (NB2's NBD-). The sync doesn't bring them in, and the ones
+ * already saved are left in the database but hidden from the Deliveries page and the Unassigned rollover.
+ */
+export const RETIRED_DO_PREFIXES: readonly string[] = ["NBD"];
+export const isRetiredDo = (doNo: string) => RETIRED_DO_PREFIXES.includes(prefixOf(doNo));
+
+/**
+ * Branch that delivers a DO, from its number: "PDD-00045420" → "PD", "M-PT-00000483" (inter-company invoice) → "PT",
+ * "K-UT-00000663" → "UT". The sync uses the account book instead for branches with their own book (see accountBook).
+ */
 export function branchFromDoNo(doNo: string): string | null {
   const no = doNo.trim().toUpperCase();
   const p = prefixOf(no);
-  return BRANCHES.find((b) => b.doPrefix === p || (b.icbPrefix && no.startsWith(`${b.icbPrefix}-`)))?.code ?? null;
+  return BRANCHES.find((b) => (b.doPrefixes as readonly string[]).includes(p) || (b.icbPrefix && no.startsWith(`${b.icbPrefix}-`)))?.code ?? null;
 }
 
 /** Branch from an AutoCount Sales Location / Agent value ("GPS", "KP", …), else from the SO number. */

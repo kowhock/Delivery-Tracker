@@ -36,6 +36,8 @@ export type AcDeliveryOrder = {
   total: number | null;
   cancelled: boolean;
   items?: AcItem[];
+  /** Read from a branch's own account book: that branch delivers and sold it. Unset = work it out from the DO number. */
+  book_branch?: string;
 };
 
 export type AcItem = { item_code: string; description: string | null; uom: string | null; qty: number };

@@ -3,15 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 // A fake AutoCount API: login gives a token, deliveryorder/select returns `pages[RecordCount - 1]`.
-function fakeAutoCount(pages: Record<string, unknown>[][], opts: { rejectFirstToken?: boolean } = {}) {
+function fakeAutoCount(pages: Record<string, unknown>[][], opts: { rejectFirstToken?: boolean; tokenPerDb?: boolean } = {}) {
   let logins = 0;
-  const calls: { path: string; body: { RecordCount: number }; auth?: string }[] = [];
+  const calls: { path: string; body: { RecordCount: number; DatabaseName?: string }; auth?: string }[] = [];
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
     const path = new URL(url).pathname;
     const body = JSON.parse(String(init.body));
     const auth = (init.headers as Record<string, string>).Authorization;
     calls.push({ path, body, auth });
-    if (path === "/api/auth/login") return new Response(JSON.stringify({ token: `t${++logins}` }));
+    if (path === "/api/auth/login") return new Response(JSON.stringify({ token: opts.tokenPerDb ? `t-${body.DatabaseName}` : `t${++logins}` }));
     if (opts.rejectFirstToken && auth === "Bearer t1") return new Response("expired", { status: 401 });
     const list = pages[body.RecordCount - 1] ?? [];
     return new Response(JSON.stringify({ Success: true, SdkResult: { DeliveryOrders: list } }));
@@ -124,5 +124,57 @@ describe("fetchAcIcbDeliveryOrders", () => {
     expect(out.map((d) => d.doc_no)).toEqual(["M-PT-00000483", "M-SN-00000005"]);
     expect(out[0]).toMatchObject({ debtor_name: "KOW HOCK BUILDING MATERIALS (NJ) SDN BHD", total: 142.5 });
     expect(calls.filter((c) => c.path === "/api/invoice/select")).toHaveLength(1);
+  });
+});
+
+describe("account books", () => {
+  it("lists the M book first, then every branch with its own book", async () => {
+    const { acBooks } = await import("./autocount-api");
+    const books = acBooks();
+    expect(books[0]).toEqual({ db: "db", branch: null, icbPrefixes: ["M-"] });
+    expect(books.slice(1)).toEqual([
+      { db: "AED_KHTIRAM", branch: "UT", icbPrefixes: ["K-UT-"] },
+      { db: "AED_KHNJ", branch: "TT", icbPrefixes: ["K-TT-"] },
+      { db: "AED_KHKS", branch: "KSL", icbPrefixes: [] },
+      { db: "AED_KHPGR", branch: "PR", icbPrefixes: ["K-PR-"] },
+      { db: "AED_KHCG", branch: "CG", icbPrefixes: ["K-CG-"] },
+    ]);
+  });
+
+  it("logs in to each book with its own database and keeps one token per book", async () => {
+    const { calls } = fakeAutoCount([[{ DocNo: "UTDO-1" }]], { tokenPerDb: true });
+    const { acBooks, fetchAcDeliveryOrders } = await import("./autocount-api");
+    const [m, ut] = acBooks();
+    await fetchAcDeliveryOrders({}, ut);
+    await fetchAcDeliveryOrders({}, m);
+    await fetchAcDeliveryOrders({}, ut);
+    expect(calls.filter((c) => c.path === "/api/auth/login").map((c) => c.body.DatabaseName)).toEqual(["AED_KHTIRAM", "db"]);
+    expect(calls.filter((c) => c.path === "/api/deliveryorder/select").map((c) => c.auth)).toEqual([
+      "Bearer t-AED_KHTIRAM",
+      "Bearer t-db",
+      "Bearer t-AED_KHTIRAM",
+    ]);
+  });
+
+  it("tags DOs from a branch's own book with that branch, whatever their number", async () => {
+    fakeAutoCount([[{ DocNo: "DOKKC-00000576", SalesLocation: "UT" }]]);
+    const { acBooks, fetchAcDeliveryOrders } = await import("./autocount-api");
+    const ut = acBooks().find((b) => b.branch === "UT")!;
+    const [d] = await fetchAcDeliveryOrders({}, ut);
+    expect(d).toMatchObject({ doc_no: "DOKKC-00000576", book_branch: "UT" });
+    // The M book leaves the branch to the DO number.
+    const [mainDo] = await fetchAcDeliveryOrders({});
+    expect(mainDo.book_branch).toBeUndefined();
+  });
+
+  it("reads only the book's own K- invoices, and skips the invoice read for a book without them", async () => {
+    const { calls } = fakeAutoCount([[{ DocNo: "K-TT-00001342", DebtorName: "A" }, { DocNo: "TTI-1", DebtorName: "B" }, { DocNo: "M-PT-1", DebtorName: "C" }]]);
+    const { acBooks, fetchAcIcbDeliveryOrders } = await import("./autocount-api");
+    const books = acBooks();
+    const out = await fetchAcIcbDeliveryOrders({}, books.find((b) => b.branch === "TT")!);
+    expect(out.map((d) => [d.doc_no, d.book_branch])).toEqual([["K-TT-00001342", "TT"]]);
+    const before = calls.length;
+    expect(await fetchAcIcbDeliveryOrders({}, books.find((b) => b.branch === "KSL")!)).toEqual([]);
+    expect(calls.length).toBe(before);
   });
 });

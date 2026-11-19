@@ -116,18 +116,27 @@ when the code changes.
 
 ## How data gets in
 
-The AutoCount sync (`scripts/autocount-sync.ts`) reads two kinds of documents and saves both as DOs
-through `importAcDeliveryOrders()` in `lib/autocount.ts`:
-- **Delivery orders** (`deliveryorder/select`): GPD-, PDD-, KSD-… The prefix is the delivering branch.
-- **Inter-company invoices** (`invoice/select`): only Doc. Nos starting with `M-` (`M-PT-00000483` is a
-  PT delivery). Between the group's companies the branches deliver on these instead of a DO. Every other invoice is ignored.
+The AutoCount sync (`scripts/autocount-sync.ts`) reads every **account book** on the same API and login:
+the M book (`AUTOCOUNT_DB_NAME`: GP, PD, KS, MS, PT, SL; NB2's NBD- DOs are no longer used — skipped by the sync and hidden on Deliveries, see `RETIRED_DO_PREFIXES`) and the branches with a book of their own
+(`accountBook` in `lib/branches.ts`: Ulu Tiram `AED_KHTIRAM`, Jaya Mas (Taman Timor) `AED_KHNJ`, Kuala Selangor
+`AED_KHKS`, Pengerang `AED_KHPGR`, CG `AED_KHCG`). A new book only needs a line there — no `.env.local` change.
+From each book it reads two kinds of documents and saves both as DOs through `importAcDeliveryOrders()` in `lib/autocount.ts`:
+- **Delivery orders** (`deliveryorder/select`): in the M book GPD-, PDD-, KSD-… — the prefix is the delivering branch.
+  In a branch's own book every DO is that branch's (delivering and selling), whatever its number (UTDO-/DOKKC-, NJDO-/TTDO-…).
+- **Inter-company invoices** (`invoice/select`): only Doc. Nos starting with `M-` in the M book (`M-PT-00000483` is a
+  PT delivery), or the branch's `K-` prefix in its own book (`K-UT-`, `K-TT-`, `K-PR-`, `K-CG-`; Kuala Selangor has none,
+  so its invoices aren't read). Between the group's companies the branches deliver on these instead of a DO. Every other invoice is ignored.
+- A book that fails doesn't stop the others. Each keeps its own last-sync time (`sync_status` row `autocount:<database>`);
+  "synced … ago" on the Deliveries page (`autocount`) only moves when every book synced.
+- Check the logins: `npm run autocount:check` (every book) or `npm run autocount:check -- AED_KHCG`.
 
 Rules:
 - Matched by Doc. No., so syncing again updates AutoCount's fields but never the driver, trip,
   status or delivery date set in this app. `doc_date` keeps AutoCount's Doc Date.
 - Branches: DO prefix / `M-<branch>` = delivering branch, Sales Location = agent's branch. Mapping in `lib/branches.ts`.
 - One-time backfill: `npm run autocount:sync -- --days 14` (goes one day at a time, because the API slows
-  down on long results; days that fail are listed at the end so they can be run again).
+  down on long results; days that fail are listed at the end so they can be run again). Add `--book UT,CG`
+  (branch code, database name, or `M`) to backfill only some books.
 
 What the IPS AutoCount API doesn't send (asked for; the app fills them in once it does):
 - item lines on invoices (`M-` DOs have none: the office types them on the Deliveries card, one per line,
