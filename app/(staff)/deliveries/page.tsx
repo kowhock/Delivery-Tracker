@@ -532,7 +532,7 @@ export default async function DeliveriesPage({
                             )}
                             {j.status === "failed" && <Redeliver doId={j.id} />}
                             <AssignDriver key={`${j.driver_id}-${j.is_oc}`} doId={j.id} driverId={j.driver_id} isOc={j.is_oc} drivers={driversFor(j)} driverName={j.driver ? driverLabel(j.driver) : undefined} />
-                            <DoDate doId={j.id} date={j.delivery_date} today={today} />
+                            <DoDate doId={j.id} date={j.delivery_date} today={today} asToday={j.status === "pending" && !j.driver_id} />
                             {!j.is_oc && <DoTimeSlot doId={j.id} slot={j.time_slot} />}
                           </div>
                         ) : (

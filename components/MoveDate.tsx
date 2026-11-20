@@ -66,15 +66,19 @@ function DayPicker({
   );
 }
 
-/** One DO's delivery day. */
-export function DoDate({ doId, date, today }: { doId: string; date: string; today: string }) {
+/**
+ * One DO's delivery day. `asToday`: an unassigned DO whose day has passed shows "Today" without being moved (it stays
+ * in Overdue); picking a driver moves it to today (assignDriver), so the day needn't be picked again.
+ */
+export function DoDate({ doId, date, today, asToday = false }: { doId: string; date: string; today: string; asToday?: boolean }) {
   const [pending, start] = useTransition();
+  const shown = asToday && date < today ? today : date;
   return (
     <DayPicker
       today={today}
-      value={date}
+      value={shown}
       disabled={pending}
-      onPick={(d) => d !== date && start(async () => void (await moveToDate([doId], d)))}
+      onPick={(d) => d !== shown && start(async () => void (await moveToDate([doId], d)))}
       className="w-full"
     />
   );
