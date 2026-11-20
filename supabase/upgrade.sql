@@ -114,3 +114,11 @@ drop trigger if exists keep_office_cancel on public.delivery_orders;
 create trigger keep_office_cancel
   before insert or update on public.delivery_orders
   for each row execute function public.keep_office_cancel();
+
+-- 2026-11-20: Points for a failed attempt. A failed attempt normally earns the DO's points (so a DO that
+-- fails and is redelivered earns twice). Staff with points access can now key in one attempt's own points
+-- on the trip form (e.g. 0 when only the redelivery should earn); empty goes back to the DO's points.
+-- points_by/_at record who and when. New empty columns: every existing attempt keeps earning as before.
+alter table public.delivery_attempts add column if not exists points int check (points between 0 and 99);
+alter table public.delivery_attempts add column if not exists points_by uuid references public.profiles on delete set null;
+alter table public.delivery_attempts add column if not exists points_at timestamptz;

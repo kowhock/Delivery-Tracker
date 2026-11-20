@@ -258,6 +258,36 @@ export async function undoTripFormDo(doId: string) {
   revalidatePath("/orders/[id]", "page");
 }
 
+/**
+ * Keys in what one failed attempt earns, from the trip form: a whole number 0–99 (e.g. 0 so only the
+ * redelivery earns), or blank to go back to the DO's own points. Only staff who may edit points, and
+ * only for a DO their branch delivers.
+ */
+export async function setAttemptPoints(attemptId: string, input: string) {
+  const { supabase, user, profile } = await requireStaff();
+  if (!canEditPoints(profile)) throw new Error(NO_POINTS_ACCESS);
+  const points = input.trim() === "" ? null : Number(input);
+  if (points != null && (!Number.isInteger(points) || points < 0 || points > 99)) throw new Error("Points must be a whole number from 0 to 99.");
+  const { data: a } = await supabase
+    .from("delivery_attempts")
+    .select("id, do:delivery_orders!inner(do_no, branch, helper_branch)")
+    .eq("id", attemptId)
+    .single();
+  if (!a) throw new Error("Failed attempt not found.");
+  const d = a.do as unknown as { do_no: string; branch: string | null; helper_branch: string | null };
+  if (!canPlan(profile.branch, d.branch, d.helper_branch)) throw new Error(notYourBranch(d.branch ?? ""));
+
+  const { error } = await supabase
+    .from("delivery_attempts")
+    .update(points != null ? { points, points_by: user.id, points_at: new Date().toISOString() } : { points: null, points_by: null, points_at: null })
+    .eq("id", attemptId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/trip-form");
+  revalidatePath("/drivers");
+  revalidatePath("/driver");
+}
+
 // ---------- Trip form: what the office types ------------------------
 
 /**

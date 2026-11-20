@@ -4,7 +4,7 @@ import type { DeliveryOrder } from "@/lib/types";
 import { JobCard } from "@/components/JobCard";
 import { CommissionBar } from "@/components/CommissionBar";
 import { dayTotals, pointsVisible, withTripPoints } from "@/lib/commission";
-import { failedAttempts } from "@/lib/attempts";
+import { attemptPoints, failedAttempts } from "@/lib/attempts";
 import { signOut } from "../actions";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -59,26 +59,31 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
   // driver): they stay in the trip they failed in, so the driver still sees them (and their points).
   const { data: attemptRows } = await supabase
     .from("delivery_attempts")
-    .select("id, do_id, driver_id, delivery_date, trip_no, failed_at, failed_reason, do:delivery_orders!inner(do_no, customer_name, address, map_address, points, points_manual, status, driver_id, delivery_date, trip_no, cancelled)")
+    .select("id, do_id, driver_id, delivery_date, trip_no, failed_at, failed_reason, points, do:delivery_orders!inner(do_no, customer_name, address, map_address, points, points_manual, status, driver_id, delivery_date, trip_no, cancelled)")
     .eq("driver_id", user.id)
     .eq("delivery_date", date)
     .eq("do.cancelled", false)
     .order("failed_at");
   type FailedTry = { id: string; driver_id: string; delivery_date: string; trip_no: number; failed_at: string; failed_reason: string | null; do_no: string; customer_name: string; address: string | null; map_address: string | null; points: number | null; points_manual: boolean; failedTry: true };
   const failedTries: FailedTry[] = [];
+  const keyedCards = new Map<string, number>(); // still-Failed DOs whose attempt has points keyed in by the office
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const { do: d, ...a } of (attemptRows ?? []) as any[]) {
-    // Still Failed in this same trip: its own card already shows it.
-    if (d.status === "failed" && d.driver_id === a.driver_id && d.delivery_date === a.delivery_date && d.trip_no === a.trip_no) continue;
+  for (const { do: d, points, ...a } of (attemptRows ?? []) as any[]) {
+    // Still Failed in this same trip: its own card already shows it (with the keyed-in points, if any).
+    if (d.status === "failed" && d.driver_id === a.driver_id && d.delivery_date === a.delivery_date && d.trip_no === a.trip_no) {
+      if (points != null) keyedCards.set(a.do_id, points);
+      continue;
+    }
     // Failed more than once in one trip: one card.
     if (failedTries.some((f) => f.do_no === d.do_no && f.trip_no === a.trip_no)) continue;
-    failedTries.push({ ...a, do_no: d.do_no, customer_name: d.customer_name, address: d.address, map_address: d.map_address, points: d.points, points_manual: d.points_manual, failedTry: true });
+    failedTries.push({ ...a, do_no: d.do_no, customer_name: d.customer_name, address: d.address, map_address: d.map_address, ...attemptPoints(points ?? null, d.points, d.points_manual), failedTry: true });
   }
 
   // In the order the office planned on the Driver status page: trip by trip, stop by stop, with any
   // failed tries at the end of their trip. Points shown per DO follow the trip rule (one full-points
   // DO per trip, the rest 1) — failed tries count in it like they do for commission.
-  const withPoints = withTripPoints<DeliveryOrder | FailedTry>([...((data ?? []) as DeliveryOrder[]), ...failedTries]);
+  const ownJobs = ((data ?? []) as DeliveryOrder[]).map((j) => (keyedCards.has(j.id) ? { ...j, ...attemptPoints(keyedCards.get(j.id)!, j.points, j.points_manual) } : j));
+  const withPoints = withTripPoints<DeliveryOrder | FailedTry>([...ownJobs, ...failedTries]);
   // A DO's points are only revealed to the driver once they've finished it (delivered, or failed —
   // which earns too). Stripped here on the server so they never reach the browser before that.
   const jobs = withPoints

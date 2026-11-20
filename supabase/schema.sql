@@ -270,7 +270,9 @@ create index do_outstanding_open_idx on public.do_outstanding (created_at) where
 -- ---------- Failed delivery attempts ---------------------------------
 -- Every time a DO turns Failed, the attempt is kept here (driver, lorry, day, trip,
 -- when they set off, why it failed). Commission and the trip form count these like
--- delivered DOs (the DO's own points), so a DO that fails and is redelivered earns twice.
+-- delivered DOs (the DO's own points), so a DO that fails and is redelivered earns twice —
+-- unless staff with points access key in the attempt's own points on the trip form (points): e.g. 0,
+-- so only the redelivery earns. Empty = the DO's points.
 create table public.delivery_attempts (
   id            uuid primary key default gen_random_uuid(),
   do_id         uuid not null references public.delivery_orders on delete cascade,
@@ -280,7 +282,10 @@ create table public.delivery_attempts (
   trip_no       int not null default 1,
   started_at    timestamptz,                   -- when the driver tapped Start for this attempt
   failed_at     timestamptz not null default now(),
-  failed_reason text
+  failed_reason text,
+  points        int check (points between 0 and 99), -- keyed in on the trip form; null = the DO's points
+  points_by     uuid references public.profiles on delete set null,
+  points_at     timestamptz
 );
 create index delivery_attempts_driver_idx on public.delivery_attempts (driver_id, failed_at);
 create index delivery_attempts_do_idx on public.delivery_attempts (do_id);

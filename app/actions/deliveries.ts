@@ -462,7 +462,7 @@ export async function moveToDate(doIds: string[], date: string) {
 
 /**
  * Failed DO goes out again: back to Assigned (same driver) or Unassigned, from today at the
- * earliest. The failed attempt stays in delivery_attempts and keeps its points. Same day and
+ * earliest. The failed attempt stays in delivery_attempts and keeps its points (unless other points are keyed in for it on the trip form). Same day and
  * driver = a new trip, so the trip rule doesn't merge it with the failed one.
  */
 export async function redeliver(doId: string) {

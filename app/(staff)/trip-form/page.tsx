@@ -49,7 +49,7 @@ export default async function TripFormPage({
 
     // Every DO the office gave this driver for each day (delivery_date), whatever its status, plus every
     // failed attempt on those days (with a "Failed" remark). Only delivered DOs and failed attempts earn
-    // points; one not delivered shows red until the office fills in its times (it then counts on that day).
+    // points (a failed attempt earns what was keyed in for it, if anything); one not delivered shows red until the office fills in its times (it then counts on that day).
     const { data: rows } = await supabase
       .from("delivery_orders")
       .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, trip_seq, status, points, points_manual, delivered_at, lorry_id")
@@ -104,6 +104,7 @@ export default async function TripFormPage({
             manual: d.points_manual && d.points != null,
             original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
             failed: d.failed ? d.failed_reason || "Failed" : "",
+            attemptPoints: d.failed ? d.attempt_points ?? null : undefined,
             fromTripForm: !d.failed && typedIn.has(d.id),
           })),
           // Given for this day but not delivered: no points until the office fills in both times.

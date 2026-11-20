@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import type { Workbook, Worksheet } from "exceljs";
-import { recordTripFormDo, saveTripNote, undoTripFormDo } from "@/app/actions";
+import { recordTripFormDo, saveTripNote, setAttemptPoints, undoTripFormDo } from "@/app/actions";
 import { LORRY_CHECKS as CHECKS, NOTE_MAX, checkField } from "@/lib/trip-form";
 
 // Printed at the top of the monthly trip form.
@@ -17,8 +17,10 @@ const SIGNATURES = ["PREPARED BY", "BRANCH MANAGER", "CONFIRM BY", "APPROVED BY"
 export type TripDo = { id: string; doNo: string; location: string; timeIn: string; timeBack: string; points: number | null; manual: boolean;
   /** AutoCount address, set only when the office changed the delivery address used for points (`location` is the new one). */
   original: string;
-  /** Why this attempt failed; set only on failed attempts (they still earn their points). */
+  /** Why this attempt failed; set only on failed attempts (they earn the DO's points unless others are keyed in). */
   failed?: string;
+  /** Failed attempt: the points staff keyed in for it (e.g. 0); null = it earns the DO's points. */
+  attemptPoints?: number | null;
   /** Recorded on this form (Save), so it can be undone here. */
   fromTripForm?: boolean;
   /** Given for this day but not delivered: red, no points until the office fills in its times and saves. */
@@ -294,7 +296,7 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
     <>
       <th className={`${head} h-8 text-[10px] print:h-[8.5mm] print:text-[11px]`}>{LABELS[field]}</th>
       {field === "location" && x?.failed ? (
-        // Failed attempt: why, above the address (the points still count).
+        // Failed attempt: why, above the address (its points count unless marked No points).
         <td className={`${cell} py-0.5 leading-tight`} title={`Failed: ${x.failed}\n${value}`}>
           <div className="truncate text-[9px] font-semibold text-rose-600 print:text-[10px]">❌ Failed: {x.failed}</div>
           <div className="line-clamp-2 break-words">{value}</div>
@@ -324,7 +326,10 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
             <span className="hidden text-rose-700 print:inline">NOT DONE</span>
           </th>
         ) : x?.failed ? (
-          <th className={`${head} text-center text-[10px] text-rose-600`} title={`Failed: ${x.failed}`}>FAILED</th>
+          <th className={`${head} p-0 text-center text-[10px] text-rose-600`} title={`Failed: ${x.failed}`}>
+            {canPoints ? <AttemptPointsBox x={x} /> : null}
+            <span className={canPoints ? "hidden print:inline" : ""}>FAILED</span>
+          </th>
         ) : x?.fromTripForm ? (
           <th className={`${head} p-0 text-center text-[10px]`}>
             <UndoBox x={x} />
@@ -342,7 +347,7 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
         <td
           rowSpan={3}
           className={`${cell} text-center text-xl font-semibold ${x?.manual ? "bg-blue-100 print:bg-blue-100" : ""}`}
-          title={x?.manual ? "Points keyed in by staff" : undefined}
+          title={x?.attemptPoints != null ? "Points keyed in by staff for this failed attempt" : x?.manual ? "Points keyed in by staff" : undefined}
         >
           {/* A real DO's points come from Driver status; typed ones reach the totals once the box is saved. */}
           {x && !x.notDone ? x.points ?? "" : canPoints ? blank("points", "text-center") : ""}
@@ -387,6 +392,41 @@ function SaveBox({ at, filled, setFilled, driverId, date, doNo }: Filled & { at:
       }
     >
       {pending ? "…" : "SAVE"}
+    </button>
+  );
+}
+
+/**
+ * On a failed attempt (staff who may edit points): key in what this attempt earns — e.g. 0 so only the
+ * redelivery counts, or leave it blank to go back to the DO's own points. `x.id` is the attempt's id.
+ */
+function AttemptPointsBox({ x }: { x: TripDo }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const keyed = x.attemptPoints != null;
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      title={`Failed: ${x.failed} · click to set the points this failed attempt earns`}
+      className={`h-full w-full py-1 font-bold disabled:opacity-60 print:hidden ${keyed ? "bg-blue-100 text-rose-700 hover:bg-blue-200" : "bg-rose-50 text-rose-700 hover:bg-rose-100"}`}
+      onClick={() => {
+        const typed = prompt(
+          `Points for this failed attempt of ${x.doNo} (e.g. 0 = no points; the redelivery still earns its own).\nLeave empty to use the DO's own points.`,
+          keyed ? String(x.attemptPoints) : "",
+        );
+        if (typed === null) return; // Cancel
+        start(async () => {
+          try {
+            await setAttemptPoints(x.id, typed);
+            router.refresh();
+          } catch (e) {
+            alert(e instanceof Error ? e.message : "Could not save");
+          }
+        });
+      }}
+    >
+      {pending ? "…" : "FAILED · SET PTS"}
     </button>
   );
 }
