@@ -96,13 +96,24 @@ async function measure(d: DoRow) {
 }
 
 /**
+ * Branches an admin turned points off for (Admin access → Points per branch, table branch_settings):
+ * their DOs get 0 points. If it can't be read (e.g. before upgrade.sql ran), every branch earns.
+ */
+export async function pointsOffBranches(supabase: SupabaseClient): Promise<Set<string>> {
+  const { data, error } = await supabase.from("branch_settings").select("branch").eq("points_off", true);
+  if (error) console.error("Reading branch_settings failed:", error.message);
+  return new Set((data ?? []).map((r) => r.branch as string));
+}
+
+/**
  * Works out distance + points for these DOs. Skips DOs whose points the office
  * keyed in, and DOs already measured from the same address (unless `force`).
+ * DOs of branches with points off (pointsOffBranches) get 0 points whatever the distance.
  * Returns quietly when no API key is set — the office then keys points in.
  */
 export async function updateDistances(supabase: SupabaseClient, doIds: string[], force = false) {
   const summary = { measured: 0, needManual: 0, skipped: 0 };
-  if (!KEY || !doIds.length) return summary;
+  if (!doIds.length) return summary;
 
   const rows: DoRow[] = [];
   for (let i = 0; i < doIds.length; i += 200) {
@@ -117,12 +128,24 @@ export async function updateDistances(supabase: SupabaseClient, doIds: string[],
     (d) => !d.points_manual && (force || !d.geo_status || d.geo_status === "error" || d.geo_input !== mapAddress(d))
   );
   summary.skipped = rows.length - todo.length;
+  const off = todo.length ? await pointsOffBranches(supabase) : new Set<string>();
+  const earnsPoints = (branch: string | null) => !off.has(branch ?? "");
+
+  // No Maps key: only the no-points branches can still be settled (0 points), the rest wait for the office.
+  if (!KEY) {
+    const zero = todo.filter((d) => !earnsPoints(d.branch)).map((d) => d.id);
+    if (zero.length) await supabase.from("delivery_orders").update({ points: 0 }).in("id", zero).eq("points_manual", false);
+    summary.measured = zero.length;
+    summary.skipped = rows.length - zero.length;
+    return summary;
+  }
 
   // A few at a time keeps Google happy and the import quick.
   for (let i = 0; i < todo.length; i += 8) {
     await Promise.all(
       todo.slice(i, i + 8).map(async (d) => {
         const patch = await measure(d);
+        if (!earnsPoints(d.branch)) patch.points = 0; // points off: distance kept for routes, no points
         await supabase.from("delivery_orders").update(patch).eq("id", d.id).eq("points_manual", false);
         if (patch.points == null) summary.needManual += 1;
         else summary.measured += 1;

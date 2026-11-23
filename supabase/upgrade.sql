@@ -122,3 +122,25 @@ create trigger keep_office_cancel
 alter table public.delivery_attempts add column if not exists points int check (points between 0 and 99);
 alter table public.delivery_attempts add column if not exists points_by uuid references public.profiles on delete set null;
 alter table public.delivery_attempts add column if not exists points_at timestamptz;
+
+-- 2026-11-23: Points on/off per branch (Admin access → Points per branch). A branch with points_off
+-- earns 0 points on its DOs (lib/geo.ts); switching it updates the branch's DOs not delivered yet
+-- (setBranchPoints). Staff read it, only admins change it. New table: every branch earns as before,
+-- except Pengerang (PR), which starts with points off.
+create table if not exists public.branch_settings (
+  branch     text primary key check (length(branch) between 1 and 10),
+  points_off boolean not null default false,
+  updated_by uuid default auth.uid() references public.profiles on delete set null,
+  updated_at timestamptz not null default now()
+);
+alter table public.branch_settings enable row level security;
+drop policy if exists "staff read" on public.branch_settings;
+create policy "staff read" on public.branch_settings for select using ((select public.is_staff()));
+drop policy if exists "admin write" on public.branch_settings;
+create policy "admin write" on public.branch_settings for all
+  using ((select public.my_role()) = 'admin') with check ((select public.my_role()) = 'admin');
+grant select, insert, update, delete on public.branch_settings to authenticated;
+insert into public.branch_settings (branch, points_off) values ('PR', true) on conflict (branch) do nothing;
+-- PR DOs not delivered yet go to 0 now (keyed-in points stay).
+update public.delivery_orders set points = 0
+where branch = 'PR' and not points_manual and status in ('pending', 'assigned', 'out_for_delivery');

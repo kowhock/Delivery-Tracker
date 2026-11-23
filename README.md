@@ -164,6 +164,8 @@ What the IPS AutoCount API doesn't send (asked for; the app fills them in once i
 - Who can change points: admins, plus dispatchers ticked **Edit points** on Deliveries → Admin access
   (`lib/access.ts`, enforced in the database by `guard_points`). "Calculate missing points" stays open to all staff,
   and anyone who can make / edit a special DO sets its points on the special DO form.
+- Points per branch: Deliveries → Admin access → **Points per branch** (admins only, saved in `branch_settings`).
+  Off = the branch's DOs earn 0 points (`lib/geo.ts`); switching updates its DOs not delivered yet, never delivered / failed ones.
 
 ## Development
 

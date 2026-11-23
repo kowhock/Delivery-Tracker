@@ -28,6 +28,7 @@ import {
 } from "@/lib/special";
 import { checkBranchDriver, nextTrip, notYourBranch } from "./_shared";
 import { NO_POINTS_ACCESS, canEditPoints, isStaffAccess, type StaffAccess } from "@/lib/access";
+import { pointsForKm } from "@/lib/commission";
 
 // ---------- Delivery orders (staff) ----------------------------------
 
@@ -262,6 +263,51 @@ export async function setStaffAccess(profileId: string, access: StaffAccess, all
   if (error) throw new Error(error.message);
   if (!data?.length) throw new Error("That dispatcher wasn't found.");
   revalidatePath("/deliveries/special/access");
+}
+
+/**
+ * Admin access → Points per branch: turns a branch's driver points on or off (branch_settings).
+ * Off: the branch's DOs earn 0 points (lib/geo.ts). The branch's DOs not finished yet follow the new
+ * setting at once: off → 0, on → back to the distance rule (no distance yet → missing, for the office).
+ * Delivered and failed DOs keep the points they earned, so past trip forms don't change. Keyed-in
+ * points are never touched. Returns how many DOs changed.
+ */
+export async function setBranchPoints(branch: string, on: boolean): Promise<number> {
+  const { supabase, user, profile } = await requireStaff();
+  if (profile.role !== "admin") throw new Error("Only an admin can change this.");
+  if (!BRANCHES.some((b) => b.code === branch)) throw new Error("Unknown branch.");
+  const { error } = await supabase
+    .from("branch_settings")
+    .upsert({ branch, points_off: !on, updated_by: user.id, updated_at: new Date().toISOString() });
+  if (error) throw new Error(error.message);
+
+  const { data: open, error: readError } = await supabase
+    .from("delivery_orders")
+    .select("id, distance_km")
+    .eq("branch", branch)
+    .eq("points_manual", false)
+    .in("status", ["pending", "assigned", "out_for_delivery"] satisfies DoStatus[]);
+  if (readError) throw new Error(readError.message);
+
+  // Same new points → one update (0 when off; 2, 3 or empty when on).
+  const groups = new Map<number | null, string[]>();
+  for (const d of open ?? []) {
+    const points = !on ? 0 : d.distance_km == null ? null : pointsForKm(Number(d.distance_km));
+    groups.set(points, [...(groups.get(points) ?? []), d.id]);
+  }
+  for (const [points, ids] of groups) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error: e } = await supabase.from("delivery_orders").update({ points }).in("id", ids.slice(i, i + 200)).eq("points_manual", false);
+      if (e) throw new Error(e.message);
+    }
+  }
+
+  revalidatePath("/deliveries/special/access");
+  revalidatePath("/deliveries");
+  revalidatePath("/drivers");
+  revalidatePath("/trip-form");
+  revalidatePath("/driver");
+  return open?.length ?? 0;
 }
 
 /**
