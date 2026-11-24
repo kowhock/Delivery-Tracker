@@ -302,6 +302,18 @@ create table public.trip_form_notes (
   primary key (driver_id, date, field)
 );
 
+-- ---------- Points on/off per branch -----------------------------------
+-- Admin access → Points per branch. A branch with points_off earns 0 points on its DOs (lib/geo.ts),
+-- and the trip form leaves them blank; switching updates the branch's DOs not delivered yet
+-- (setBranchPoints). No row = points on. Staff read it, only admins change it.
+create table public.branch_settings (
+  branch     text primary key check (length(branch) between 1 and 10),
+  points_off boolean not null default false,
+  updated_by uuid default auth.uid() references public.profiles on delete set null,
+  updated_at timestamptz not null default now()
+);
+insert into public.branch_settings (branch, points_off) values ('PR', true); -- Pengerang: no points
+
 -- ---------- AutoCount sync: when it last ran ---------------------------
 -- The office computer's sync writes here after each run, so the Deliveries page
 -- can show "AutoCount synced 2 min ago".
@@ -589,6 +601,7 @@ alter table public.lorry_events    enable row level security;
 alter table public.delivery_attempts enable row level security;
 alter table public.sync_status     enable row level security;
 alter table public.trip_form_notes   enable row level security;
+alter table public.branch_settings   enable row level security;
 
 -- Profiles: see yourself; staff see everyone; admins edit roles.
 create policy "read own or staff"   on public.profiles for select using (id = (select auth.uid()) or (select public.is_staff()));
@@ -608,6 +621,10 @@ create policy "staff all" on public.lorry_events    for all using ((select publi
 create policy "staff all" on public.delivery_attempts for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.sync_status     for all using ((select public.is_staff())) with check ((select public.is_staff()));
 create policy "staff all" on public.trip_form_notes   for all using ((select public.is_staff())) with check ((select public.is_staff()));
+-- Points per branch: every staff member reads it (the sync and the trip form need it), only admins change it.
+create policy "staff read"  on public.branch_settings for select using ((select public.is_staff()));
+create policy "admin write" on public.branch_settings for all
+  using ((select public.my_role()) = 'admin') with check ((select public.my_role()) = 'admin');
 
 -- Drivers: only their own delivery jobs.
 create policy "driver reads own DOs" on public.delivery_orders
