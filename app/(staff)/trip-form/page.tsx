@@ -11,6 +11,7 @@ import { TripForm, type TripDay } from "@/components/TripForm";
 import { BranchDriverPicker } from "@/components/BranchDriverPicker";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { fromTripForm } from "@/app/actions";
+import { pointsOffBranches } from "@/lib/geo";
 
 const MAX_DAYS = 31; // the monthly form has 31 rows
 
@@ -52,13 +53,16 @@ export default async function TripFormPage({
     // points (a failed attempt earns what was keyed in for it, if anything); one not delivered shows red until the office fills in its times (it then counts on that day).
     const { data: rows } = await supabase
       .from("delivery_orders")
-      .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, trip_seq, status, points, points_manual, delivered_at, lorry_id")
+      .select("id, do_no, customer_name, address, map_address, driver_id, delivery_date, trip_no, trip_seq, status, points, points_manual, delivered_at, lorry_id, branch")
       .eq("driver_id", driver.id)
       .in("status", ["assigned", "out_for_delivery", "delivered"])
       .eq("cancelled", false)
       .gte("delivery_date", dates[0])
       .lte("delivery_date", dates[dates.length - 1]);
     const failed = await failedAttempts(supabase, [driver.id], dates[0], dates[dates.length - 1]);
+    // Branches with points off (Admin access): their DOs that earn nothing show blank, not 0.
+    const off = await pointsOffBranches(supabase);
+    const noPoints = (d: { branch: string | null; points: number | null }) => off.has(d.branch ?? "") && !d.points;
     const done = (rows ?? []).filter((d) => d.status === "delivered");
     const todo = (rows ?? []).filter((d) => d.status !== "delivered").sort((a, b) => a.trip_no - b.trip_no || a.trip_seq - b.trip_seq);
     const delivered = withTripPoints<Omit<(typeof done)[number], "status" | "trip_seq"> & Partial<FailedAttempt>>([...done, ...failed]).sort((a, b) => a.delivered_at!.localeCompare(b.delivered_at!));
@@ -88,10 +92,11 @@ export default async function TripFormPage({
       return {
         date,
         points,
+        noPoints: mine.length > 0 && mine.every(noPoints),
         rm: commissionForDay(points),
         trips: new Set(mine.map((d) => `${d.delivery_date}|${d.trip_no}`)).size,
         lorry: [...new Set(mine.map((d) => labelOf(d.lorry_id)).filter(Boolean))].join(", ") || lorry,
-        missingPoints: mine.filter((d) => d.points == null).length,
+        missingPoints: mine.filter((d) => d.points == null && !noPoints(d)).length,
         notDone: notDone.length,
         dos: [
           ...mine.map((d) => ({
@@ -102,6 +107,7 @@ export default async function TripFormPage({
             timeBack: fmtTime(d.delivered_at),
             points: d.points,
             manual: d.points_manual && d.points != null,
+            noPoints: noPoints(d),
             original: d.map_address?.trim() && d.address && d.map_address.trim() !== d.address.trim() ? d.address : "",
             failed: d.failed ? d.failed_reason || "Failed" : "",
             attemptPoints: d.failed ? d.attempt_points ?? null : undefined,

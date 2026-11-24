@@ -15,6 +15,8 @@ const BOXES = 12; // DO boxes on one daily form page (2 columns × 6)
 const SIGNATURES = ["PREPARED BY", "BRANCH MANAGER", "CONFIRM BY", "APPROVED BY"];
 
 export type TripDo = { id: string; doNo: string; location: string; timeIn: string; timeBack: string; points: number | null; manual: boolean;
+  /** Its branch has points off (Admin access) and it earns nothing: the points box stays blank. */
+  noPoints?: boolean;
   /** AutoCount address, set only when the office changed the delivery address used for points (`location` is the new one). */
   original: string;
   /** Why this attempt failed; set only on failed attempts (they earn the DO's points unless others are keyed in). */
@@ -25,7 +27,11 @@ export type TripDo = { id: string; doNo: string; location: string; timeIn: strin
   fromTripForm?: boolean;
   /** Given for this day but not delivered: red, no points until the office fills in its times and saves. */
   notDone?: boolean };
-export type TripDay = { date: string; points: number; rm: number; trips: number; lorry: string; missingPoints: number; notDone: number; dos: TripDo[] };
+/** Every day with DOs has points off, and none earned: the monthly TOTAL stays blank too. */
+const allNoPoints = (days: TripDay[]) => days.some((d) => d.noPoints) && days.every((d) => d.noPoints || d.points === 0);
+
+/** noPoints: no DO that day earned points because their branch has points off; Point and Amount stay blank. */
+export type TripDay = { date: string; points: number; noPoints?: boolean; rm: number; trips: number; lorry: string; missingPoints: number; notDone: number; dos: TripDo[] };
 
 /** canEditPoints: may type points for a DO added on the form (lib/access.ts); without it the box stays blank. */
 /** savedNotes: what the office typed and saved so far, by date then box (trip_form_notes, lib/trip-form.ts). */
@@ -213,8 +219,8 @@ function DailyPage({ branch, driver, driverId, lorry, day, rows, page, spare, fi
               <td className={`${cell} h-6 py-0 text-center`}>
                 {day.trips || note("trips", "Trips")}
               </td>
-              <td className={`${cell} text-center font-semibold`}>{day.points}</td>
-              <td colSpan={2} className={`${cell} text-center`}>{rm(day.rm)}</td>
+              <td className={`${cell} text-center font-semibold`}>{day.noPoints ? "" : day.points}</td>
+              <td colSpan={2} className={`${cell} text-center`}>{day.noPoints ? "" : rm(day.rm)}</td>
             </tr>
           </tbody>
         </table>
@@ -350,7 +356,7 @@ function DoBoxRow({ field, row, x, at, filled, setFilled, driverId, date, canPoi
           title={x?.attemptPoints != null ? "Points keyed in by staff for this failed attempt" : x?.manual ? "Points keyed in by staff" : undefined}
         >
           {/* A real DO's points come from Driver status; typed ones reach the totals once the box is saved. */}
-          {x && !x.notDone ? x.points ?? "" : canPoints ? blank("points", "text-center") : ""}
+          {x && !x.notDone ? (x.noPoints ? "" : x.points ?? "") : canPoints ? blank("points", "text-center") : ""}
         </td>
       ) : null}
     </>
@@ -497,7 +503,7 @@ function MonthlyPage({
         </thead>
         <tbody>
           {rows.map((x, i) => (
-            <tr key={i} className={x && x.points === 0 ? "bg-slate-200 print:bg-slate-200" : ""}>
+            <tr key={i} className={x && x.points === 0 && !x.noPoints ? "bg-slate-200 print:bg-slate-200" : ""}>
               <td className={`${cell} text-center`}>{i + 1}</td>
               <td className={`${cell} text-center`}>
                 {x ? (
@@ -508,8 +514,8 @@ function MonthlyPage({
                   "-"
                 )}
               </td>
-              <td className={`${cell} text-center`}>{x?.points ?? 0}</td>
-              <td className={`${cell} text-center`}>{rm(x?.rm ?? 0)}</td>
+              <td className={`${cell} text-center`}>{x?.noPoints ? "" : x?.points ?? 0}</td>
+              <td className={`${cell} text-center`}>{x?.noPoints ? "" : rm(x?.rm ?? 0)}</td>
               <td className={`${cell} py-0 text-center`}>
                 {x && (
                   <NoteBox
@@ -529,8 +535,8 @@ function MonthlyPage({
           ))}
           <tr className="font-bold">
             <td colSpan={2} className={`${cell} text-center`}>TOTAL</td>
-            <td className={`${cell} text-center`}>{days.reduce((s, x) => s + x.points, 0)}</td>
-            <td className={`${cell} text-center`}>{rm(days.reduce((s, x) => s + x.rm, 0))}</td>
+            <td className={`${cell} text-center`}>{allNoPoints(days) ? "" : days.reduce((s, x) => s + x.points, 0)}</td>
+            <td className={`${cell} text-center`}>{allNoPoints(days) ? "" : rm(days.reduce((s, x) => s + x.rm, 0))}</td>
             <td className="border-l border-black" />
           </tr>
         </tbody>
@@ -645,8 +651,8 @@ function dailySheet(wb: Workbook, p: Props, filled: Record<string, string>) {
     put(ws, "D5", "POINT", { bold: true, center: true });
     put(ws, "E5", "AMOUNT", { bold: true, merge: "E5:F5", center: true });
     put(ws, "C6", day.trips || (filled.trips ?? ""), { center: true, typed: !day.trips });
-    put(ws, "D6", day.points, { center: true, bold: true });
-    put(ws, "E6", rm(day.rm), { merge: "E6:F6", center: true });
+    put(ws, "D6", day.noPoints ? "" : day.points, { center: true, bold: true });
+    put(ws, "E6", day.noPoints ? "" : rm(day.rm), { merge: "E6:F6", center: true });
 
     put(ws, "A8", "DATE", { bold: true });
     put(ws, "B8", dotted(day.date));
@@ -671,7 +677,7 @@ function dailySheet(wb: Workbook, p: Props, filled: Record<string, string>) {
         });
         put(ws, `${R}${r}`, x?.failed ? "FAILED" : x?.notDone ? "NOT DONE" : "REMARK", { bold: true, center: true });
         const real = x && !x.notDone;
-        put(ws, `${R}${r + 1}`, real ? x.points ?? "" : filled[boxKey(n, row, side, "points")] ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14, typed: !real });
+        put(ws, `${R}${r + 1}`, real ? (x.noPoints ? "" : x.points ?? "") : filled[boxKey(n, row, side, "points")] ?? "", { merge: `${R}${r + 1}:${R}${last}`, center: true, bold: true, size: 14, typed: !real });
         if (x?.manual) for (let k = r + 1; k <= last; k++) ws.getCell(`${R}${k}`).fill = lightBlue;
       });
       // The location line fits two lines of text, or four when it shows the original and updated address.
@@ -700,19 +706,19 @@ function monthlySheet(wb: Workbook, p: Props, remarks: Record<string, string>) {
   for (let i = 0; i < ROWS; i++) {
     const x = p.days[i];
     const r = 8 + i;
-    const shade = !!x && x.points === 0;
+    const shade = !!x && x.points === 0 && !x.noPoints; // grey = no points that day (points off isn't shaded)
     put(ws, `A${r}`, i + 1, { center: true, fill: shade });
     put(ws, `B${r}`, x ? slashed(x.date) : "-", { center: true, fill: shade });
-    put(ws, `C${r}`, x?.points ?? 0, { center: true, fill: shade });
-    put(ws, `D${r}`, x?.rm ?? 0, { center: true, fill: shade });
+    put(ws, `C${r}`, x?.noPoints ? "" : x?.points ?? 0, { center: true, fill: shade });
+    put(ws, `D${r}`, x?.noPoints ? "" : x?.rm ?? 0, { center: true, fill: shade });
     put(ws, `E${r}`, x ? remarks[x.date] ?? "" : "", { center: true, fill: shade, typed: true });
     ws.getCell(`D${r}`).numFmt = '"RM"#,##0.00';
     ws.getRow(r).height = 16;
   }
   const t = 8 + ROWS;
   put(ws, `A${t}`, "TOTAL", { bold: true, merge: `A${t}:B${t}`, center: true });
-  put(ws, `C${t}`, p.days.reduce((s, x) => s + x.points, 0), { bold: true, center: true });
-  put(ws, `D${t}`, p.days.reduce((s, x) => s + x.rm, 0), { bold: true, center: true });
+  put(ws, `C${t}`, allNoPoints(p.days) ? "" : p.days.reduce((s, x) => s + x.points, 0), { bold: true, center: true });
+  put(ws, `D${t}`, allNoPoints(p.days) ? "" : p.days.reduce((s, x) => s + x.rm, 0), { bold: true, center: true });
   ws.getCell(`D${t}`).numFmt = '"RM"#,##0.00';
 
   const s = t + 4;

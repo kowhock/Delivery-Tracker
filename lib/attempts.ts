@@ -25,6 +25,8 @@ export type FailedAttempt = {
   customer_name: string;
   address: string | null;
   map_address: string | null;
+  /** The DO's delivering branch. */
+  branch: string | null;
 };
 
 /**
@@ -41,7 +43,7 @@ export async function failedAttempts(supabase: SupabaseClient, driverIds: string
   if (!driverIds.length) return [];
   const { data } = await supabase
     .from("delivery_attempts")
-    .select("id, do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_at, failed_reason, points, do:delivery_orders!inner(do_no, customer_name, address, map_address, points, points_manual, cancelled)")
+    .select("id, do_id, driver_id, lorry_id, delivery_date, trip_no, started_at, failed_at, failed_reason, points, do:delivery_orders!inner(do_no, customer_name, address, map_address, points, points_manual, cancelled, branch)")
     .in("driver_id", driverIds)
     .eq("do.cancelled", false)
     .gte("delivery_date", from)
@@ -58,5 +60,6 @@ export async function failedAttempts(supabase: SupabaseClient, driverIds: string
     customer_name: d.customer_name,
     address: d.address,
     map_address: d.map_address,
+    branch: d.branch ?? null,
   }));
 }
