@@ -5,6 +5,8 @@ import { JobCard } from "@/components/JobCard";
 import { CommissionBar } from "@/components/CommissionBar";
 import { dayTotals, pointsVisible, withTripPoints } from "@/lib/commission";
 import { attemptPoints, failedAttempts } from "@/lib/attempts";
+import { driverSeesPoints } from "@/lib/branches";
+import { pointsOffBranches } from "@/lib/geo";
 import { signOut } from "../actions";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -33,6 +35,10 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
   const day_ = (d: string) => fmtDate(d, t.locale);
   // Header only: "20 Oct", no year.
   const dayMonth = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString(t.locale, { day: "numeric", month: "short", timeZone: "UTC" });
+
+  // Branch with points off (Admin access → Points per branch): no commission bar or ⭐ points at all.
+  // If branch_settings can't be read (upgrade.sql not run yet), points show as before.
+  const showPoints = driverSeesPoints(profile.branch, await pointsOffBranches(supabase));
 
   // Commission counts this driver's DOs assigned to the day (delivery_date), like the trip form.
   const { data: deliveredRows } = await supabase
@@ -146,7 +152,7 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
       </header>
 
       <div className="space-y-3 px-4 pt-4">
-        <CommissionBar lang={lang} date={date} isToday={isToday} delivered={day.delivered} points={day.points} missingPoints={day.missingPoints} />
+        {showPoints && <CommissionBar lang={lang} date={date} isToday={isToday} delivered={day.delivered} points={day.points} missingPoints={day.missingPoints} />}
         {jobs.length === 0 && failedTries.length === 0 && (
           <div className="card p-10 text-center text-slate-500">{isToday ? t.noJobsToday : t.noJobsOn(day_(date))}</div>
         )}
@@ -168,7 +174,7 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
                 {waiting && <span className="font-normal text-slate-400 group-open:hidden">{t.tripLater(waitingOn + 1)}</span>}
               </summary>
               {trip.map((j) => (
-                <JobCard key={j.id} job={j} driverName={profile.full_name} lang={lang} locked={date < today} />
+                <JobCard key={j.id} job={j} driverName={profile.full_name} lang={lang} locked={date < today} showPoints={showPoints} />
               ))}
               {/* Failed here and since sent out again: read-only, so the driver still sees it and its points. */}
               {tripFailed.map((f) => (
@@ -177,9 +183,11 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
                     <div>
                       <p className="text-xs text-slate-500">
                         {f.do_no}
-                        <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
-                          ⭐ {f.points == null ? t.ptsPending : t.pts(f.points)}
-                        </span>
+                        {showPoints && (
+                          <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
+                            ⭐ {f.points == null ? t.ptsPending : t.pts(f.points)}
+                          </span>
+                        )}
                       </p>
                       <h2 className="text-lg font-semibold leading-tight text-slate-900">{f.customer_name}</h2>
                     </div>

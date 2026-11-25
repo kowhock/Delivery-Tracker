@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { branchFromDoNo, branchFromLocation, branchName, branchToSave, canPlan, deliveredOrSoldBy, driversForBranch, lockedBranches, pageBranch, pickBranch, userBranches } from "./branches";
+import { branchFromDoNo, branchFromLocation, branchName, branchToSave, canPlan, deliveredOrSoldBy, driverSeesPoints, driversForBranch, lockedBranches, pageBranch, pickBranch, userBranches } from "./branches";
 import { splitDocNos } from "./autocount-rows";
 
 describe("branchFromDoNo", () => {
@@ -167,5 +167,19 @@ describe("NB2 retired", () => {
   });
   it("other DOs aren't", () => {
     for (const no of ["GPD-00044524", "TTDO-00013511", "K-TT-00001355", "M-PT-00000483"]) expect(isRetiredDo(no)).toBe(false);
+  });
+});
+
+describe("driverSeesPoints", () => {
+  const off = new Set(["PR"]);
+  it("hides points when all the driver's branches have points off", () => {
+    expect(driverSeesPoints("PR", off)).toBe(false);
+    expect(driverSeesPoints(" pr ", off)).toBe(false);
+  });
+  it("shows points when any branch of theirs earns, or they have none", () => {
+    expect(driverSeesPoints("PR,MS", off)).toBe(true);
+    expect(driverSeesPoints("MS", off)).toBe(true);
+    expect(driverSeesPoints(null, off)).toBe(true);
+    expect(driverSeesPoints("PR", new Set())).toBe(true);
   });
 });

@@ -132,6 +132,15 @@ export function userBranches(branch: string | null | undefined): string[] {
 }
 
 /**
+ * Whether a driver's app shows points (commission bar, ⭐ on each DO): not when every branch of theirs
+ * has points off (`pointsOff`, from branch_settings). A driver with no branch keeps seeing them.
+ */
+export function driverSeesPoints(branch: string | null | undefined, pointsOff: ReadonlySet<string>): boolean {
+  const mine = userBranches(branch);
+  return !mine.length || mine.some((b) => !pointsOff.has(b));
+}
+
+/**
  * Which branch a staff page shows. No ?branch= in the URL → the user's own
  * branch (all of theirs when they have several: returns ""); ?branch=all → every
  * branch (returns ""); otherwise that branch.

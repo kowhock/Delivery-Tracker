@@ -16,8 +16,11 @@ type Dict = (typeof DICT)[Lang];
 // Saved in English (the office reads them); the driver sees them in their language.
 const FAIL_REASONS = ["Customer not available", "Shop closed", "Wrong / unclear address", "Customer rejected goods", "Vehicle problem", "Other"];
 
-/** `locked`: the DO's day has passed, so the driver can't Start, Deliver or Fail it (the office completes it on the trip form). */
-export function JobCard({ job, driverName, lang = "en", locked = false }: { job: DeliveryOrder; driverName: string; lang?: Lang; locked?: boolean }) {
+/**
+ * `locked`: the DO's day has passed, so the driver can't Start, Deliver or Fail it (the office completes it on the trip form).
+ * `showPoints`: false for drivers of a branch with points off — no ⭐ points on the card.
+ */
+export function JobCard({ job, driverName, lang = "en", locked = false, showPoints = true }: { job: DeliveryOrder; driverName: string; lang?: Lang; locked?: boolean; showPoints?: boolean }) {
   const t = DICT[lang];
   const [mode, setMode] = useState<"idle" | "deliver" | "fail">("idle");
   const [pending, start] = useTransition();
@@ -51,7 +54,7 @@ export function JobCard({ job, driverName, lang = "en", locked = false }: { job:
           <div>
             <p className="text-xs text-slate-500">
               {job.do_no}
-              {pointsVisible(job.status) && (
+              {showPoints && pointsVisible(job.status) && (
                 <span className="ml-1.5 rounded bg-kh-yellow/25 px-1.5 font-medium text-slate-900">
                   ⭐ {job.points == null ? t.ptsPending : t.pts(job.points)}
                 </span>
